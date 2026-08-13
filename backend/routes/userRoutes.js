@@ -13,7 +13,7 @@ const { validateCoupon } = require("../controller/CouponController");
 const { addToWishlist, getWishlist, removeFromWishlist } = require("../controller/wishlistController");
 const { getWallet } = require("../controller/walletController");
 const { fetchOfferById , fetchOfferOfCategory} = require("../controller/offerController");
-// const { verifyUser } = require("../middleware/userAuth");
+const { verifyUser } = require("../middleware/userAuth");
 
 
 
