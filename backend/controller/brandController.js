@@ -4,6 +4,10 @@ const addBrand = async(req,res)=>{
     try {
         const {name,status} = req.body;
 
+        if (typeof name !== "string" || !name.trim()) {
+            return res.status(400).json({message:"Invalid name"});
+        }
+
         const existingBrand = await Brand.findOne({name});
         if(existingBrand){
             return res.status(400).json({message:"Brand already exists"});
@@ -22,8 +26,21 @@ const addBrand = async(req,res)=>{
 
 const getAllBrand = async(req,res)=>{
     try {
-        const brand = await Brand.find();
-        return res.status(200).json({brand})
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+        const skip = (page - 1) * limit;
+
+        const [brand, total] = await Promise.all([
+            Brand.find().skip(skip).limit(limit),
+            Brand.countDocuments()
+        ]);
+
+        return res.status(200).json({
+            brand,
+            total,
+            page,
+            totalPages: Math.ceil(total / limit)
+        })
     } catch (error) {
         console.log('Error in fetching brand :',error);
         return res.status(500).json({message:'Internal server error'})

@@ -1,7 +1,7 @@
-const Order = require('../models/OrderSchema');
-const Product = require('../models/ProductSchema');
-const Category = require('../models/CategorySchema');
-const Brand = require('../models/BrandSchema');
+const Order = require('../models/orderSchema');
+const Product = require('../models/productSchema');
+const Category = require('../models/categorySchema');
+const Brand = require('../models/brandSchema');
 
 const salesReport = async (req, res) => {
   try {

@@ -48,14 +48,13 @@ function OrderManagement() {
           );
   
           const response = await axiosInstance.post(`/order/status/${orderId}`, {
-              status: newStatus,
-              role: 'admin'
+              status: newStatus
           });
-  
-          if (response.data && response.data.updatedOrder) {
+
+          if (response.data && response.data.updateOrder) {
               setOrders(prevOrders =>
                   prevOrders.map(order =>
-                      order._id === orderId ? { ...order, ...response.data.updatedOrder } : order
+                      order._id === orderId ? { ...order, ...response.data.updateOrder } : order
                   )
               );
               toast.success(`Order status updated to ${newStatus}`);

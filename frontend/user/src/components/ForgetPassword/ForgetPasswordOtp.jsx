@@ -33,7 +33,6 @@ const ForgetPasswordOtp = () => {
       const response = await axiosInstance.post('/forgot-password-verifyOtp', { otp }, { withCredentials: true });
       // alert('OTP verified successfully!');
       toast.success('OTP verified successfully!');
-      localStorage.setItem('accessToken',response.data.token)
       setTimeout(() => {
         navigate('/resetpassword');
       }, 1000);

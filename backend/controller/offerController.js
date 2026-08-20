@@ -58,13 +58,26 @@ const addOffer = async (req, res) => {
 const allOffers = async(req,res)=>{
     try {
 
-        const offersData = await Offer.find();
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+        const skip = (page - 1) * limit;
+
+        const [offersData, total] = await Promise.all([
+            Offer.find().skip(skip).limit(limit),
+            Offer.countDocuments()
+        ]);
         if(!offersData){
             return res.status(404).json({message:"No offer found."});
         };
 
-        res.status(200).json({message:"Offers fetched successfully.",offersData});
-        
+        res.status(200).json({
+            message:"Offers fetched successfully.",
+            offersData,
+            total,
+            page,
+            totalPages: Math.ceil(total / limit)
+        });
+
     } catch (error) {
         console.log("Error in fetching offers:",error);
         return res.status(500).json({message:"Error in fetching offers."});

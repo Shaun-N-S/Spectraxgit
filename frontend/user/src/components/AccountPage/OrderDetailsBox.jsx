@@ -107,7 +107,7 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
   
     try {
       const response = await axiosInstance.post(
-        `/update/order-status/${order._id}`,
+        `/order/status/${order._id}`,
         { status: 'Cancelled' }
       );
   

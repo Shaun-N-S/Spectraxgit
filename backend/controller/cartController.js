@@ -6,7 +6,8 @@ const Product = require('../models/productSchema')
 const AddCart = async (req, res) => {
     console.log("reached addcart...")
     try {
-        const { userId, productId, quantity, variantId } = req.body;
+        const userId = req.user.id;
+        const { productId, quantity, variantId } = req.body;
         console.log(userId,productId,quantity,variantId)
 
         // Validate user
@@ -81,11 +82,7 @@ const AddCart = async (req, res) => {
 
 const CartDetails = async (req, res) => {
     try {
-        const { userId } = req.body;
-
-        if (!userId) {
-            return res.status(400).json({ message: "UserId is required." });
-        }
+        const userId = req.user.id;
 
         // Fetch cart based on userId
         const cartData = await Cart.findOne({ userId });
@@ -103,11 +100,12 @@ const CartDetails = async (req, res) => {
 
 const UpdateQuantity = async (req, res) => {
     try {
-        const { userId, itemId, quantity } = req.body;
+        const userId = req.user.id;
+        const { itemId, quantity } = req.body;
 
         // Validate inputs
-        if (!userId || !itemId || quantity === undefined) {
-            return res.status(400).json({ message: "userId, itemId, and quantity are required." });
+        if (!itemId || quantity === undefined) {
+            return res.status(400).json({ message: "itemId and quantity are required." });
         }
 
         // Validate quantity (e.g., it should be a positive integer)
@@ -144,11 +142,12 @@ const UpdateQuantity = async (req, res) => {
 
 const RemoveItem = async (req, res) => {
     try {
-        const { userId, itemId } = req.body;
+        const userId = req.user.id;
+        const { itemId } = req.body;
 
         // Validate inputs
-        if (!userId || !itemId) {
-            return res.status(400).json({ message: "userId and itemId are required." });
+        if (!itemId) {
+            return res.status(400).json({ message: "itemId is required." });
         }
 
         // Find the user's cart

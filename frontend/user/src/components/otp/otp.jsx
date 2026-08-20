@@ -33,7 +33,6 @@ console.log('User Email:', email);
       const response = await axiosInstance.post('/verify-otp', { otp }, { withCredentials: true });
       // alert('OTP verified successfully!');
       toast.success('OTP verified successfully!');
-      localStorage.setItem('accessToken',response.data.token)
       setTimeout(() => {
         navigate('/home');
       }, 1000);

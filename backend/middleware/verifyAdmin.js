@@ -1,28 +1,41 @@
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
-const User = require('../models/userModel');
+const User = require("../models/userModel");
 
-verifyAdmin = async(req,res)=>{
-    let token = req.cookie.token;
+const verifyAdmin = async (req, res, next) => {
+  let token = req.cookies?.token;
 
-    if(token){
-        try {
-            const decode = jwt.verify(token,process.env.JWT_SECRET);
+  if (token) {
+    try {
+      const decode = jwt.verify(token, process.env.JWT_SECRET);
 
-            await User.findById(decode.id).select("-password");
-            next();
+      const admin = await User.findById(decode.id).select("-password");
 
+      if (!admin) {
+        return res.status(401).json({
+          message: "Admin not found",
+        });
+      }
 
-        } catch (error) {
-            console.log(error);
-            
-            console.log("Not authorized , token failed");
-            res.status(401).json({message:"Not authorized token failed"})
-        }
-    }else{
-        res.status(401).json({message:"Not authorized , no token"});
-        console.log("Not authorized , no token");
+      if (!admin.isAdmin) {
+        return res.status(403).json({
+          message: "Access denied",
+        });
+      }
+
+      req.user = admin;
+
+      next();
+    } catch (error) {
+      console.log(error);
+
+      console.log("Not authorized , token failed");
+      res.status(401).json({ message: "Not authorized token failed" });
     }
-}
+  } else {
+    res.status(401).json({ message: "Not authorized , no token" });
+    console.log("Not authorized , no token");
+  }
+};
 
-module.exports = {verifyAdmin};
+module.exports = { verifyAdmin };
