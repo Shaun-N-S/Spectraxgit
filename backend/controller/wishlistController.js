@@ -3,13 +3,14 @@ const Product = require('../models/productSchema');
 
 const addToWishlist = async (req, res) => {
     try {
-        const { userId, productId, variantId } = req.body;
+        const userId = req.user.id;
+        const { productId, variantId } = req.body;
 
         // Validate required fields
-        if (!userId || !productId || !variantId) {
-            return res.status(400).json({ 
+        if (!productId || !variantId) {
+            return res.status(400).json({
                 success: false,
-                message: "Missing required fields: userId, productId, and variantId are required" 
+                message: "Missing required fields: productId and variantId are required"
             });
         }
 
@@ -79,12 +80,13 @@ const addToWishlist = async (req, res) => {
 
 const removeFromWishlist = async (req, res) => {
     try {
-        const { userId, productId, variantId } = req.body;
+        const userId = req.user.id;
+        const { productId, variantId } = req.body;
 
-        if (!userId || !productId || !variantId) {
-            return res.status(400).json({ 
+        if (!productId || !variantId) {
+            return res.status(400).json({
                 success: false,
-                message: "Missing required fields: userId, productId, and variantId are required" 
+                message: "Missing required fields: productId and variantId are required"
             });
         }
 
@@ -127,14 +129,7 @@ const removeFromWishlist = async (req, res) => {
 
 const getWishlist = async (req, res) => {
     try {
-        const { userId } = req.params;
-
-        if (!userId) {
-            return res.status(400).json({ 
-                success: false,
-                message: "User ID is required" 
-            });
-        }
+        const userId = req.user.id;
 
         const wishlist = await Wishlist.findOne({ userId })
             .populate('product.productId')

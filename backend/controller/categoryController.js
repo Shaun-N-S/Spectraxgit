@@ -5,6 +5,10 @@ const addCategory = async (req, res) => {
   try {
     const { name, description, status } = req.body;
 
+    if (typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ message: "Invalid name" });
+    }
+
     // Check if the category name already exists
     const existingCategory = await Category.findOne({ name });
     if (existingCategory) {
@@ -27,9 +31,21 @@ const addCategory = async (req, res) => {
 // Controller to show all categories
 const getAllCategories = async (req, res) => {
     try {
+      const page = Math.max(parseInt(req.query.page) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+      const skip = (page - 1) * limit;
+
       // Fetch only categories that are active
-      const categories = await Category.find();
-      return res.status(200).json({ categories });
+      const [categories, total] = await Promise.all([
+        Category.find().skip(skip).limit(limit),
+        Category.countDocuments()
+      ]);
+      return res.status(200).json({
+        categories,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit)
+      });
     } catch (error) {
       console.error('Error fetching categories:', error);
       return res.status(500).json({ message: 'Internal Server Error' });

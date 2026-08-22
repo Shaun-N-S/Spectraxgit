@@ -1,68 +1,158 @@
-const express = require('express');
+const express = require("express");
 const adminRoutes = express.Router();
 
+const { ADMIN_ROUTES } = require("../constants/routes");
+
 // Controllers
-const { adminLogin, logoutAdmin, fetchAllUsers } = require('../controller/adminController');
-const { verifyAdmin } = require('../middleware/verifyAdmin');
-const { addProduct, showProducts, editProduct, showProductById, toggleProductStatus,showProductsIsActive, showProductsIsActiveOffer } = require('../controller/productController');
-const { addCategory, getAllCategories, editCategory, toggleCategoryStatus, getAllCategoriesIsactive } = require('../controller/categoryController');
-const { updateUserStatus } = require('../controller/userController');
-const { addBrand, getAllBrand, toggleBrandStatus, updateBrandName, getallIsactiveBrands } = require('../controller/brandController');
-const { fetchOrders, getallorders, orderStatusUpdate } = require('../controller/orderController');
-const { addCoupon, allCoupons, updateCoupon, removeCoupon } = require('../controller/CouponController');
-const { addOffer, allOffers, deleteOffers, updateOffer, fetchOfferById } = require('../controller/offerController');
-const { salesReport, getSalesAnalytics } = require('../controller/salesController');
-const { verifyRoute } = require('../middleware/verifyRoute');
+const {
+  adminLogin,
+  logoutAdmin,
+  fetchAllUsers,
+} = require("../controller/adminController");
+const { verifyAdmin } = require("../middleware/verifyAdmin");
+const { adminAuthLimiter } = require("../middleware/rateLimiter");
+const {
+  addProduct,
+  showProducts,
+  editProduct,
+  showProductById,
+  toggleProductStatus,
+  showProductsIsActive,
+  showProductsIsActiveOffer,
+} = require("../controller/productController");
+const {
+  addCategory,
+  getAllCategories,
+  editCategory,
+  toggleCategoryStatus,
+  getAllCategoriesIsactive,
+} = require("../controller/categoryController");
+const { updateUserStatus } = require("../controller/userController");
+const {
+  addBrand,
+  getAllBrand,
+  toggleBrandStatus,
+  updateBrandName,
+  getallIsactiveBrands,
+} = require("../controller/brandController");
+const {
+  getallorders,
+  orderStatusUpdate,
+} = require("../controller/orderController");
+const {
+  addCoupon,
+  allCoupons,
+  updateCoupon,
+  removeCoupon,
+} = require("../controller/CouponController");
+const {
+  addOffer,
+  allOffers,
+  deleteOffers,
+  updateOffer,
+} = require("../controller/offerController");
+const {
+  salesReport,
+  getSalesAnalytics,
+} = require("../controller/salesController");
 
 // ------------------ Authentication Routes ------------------
-adminRoutes.post('/login', adminLogin);
-adminRoutes.post('/logout', verifyRoute,verifyAdmin, logoutAdmin);
+adminRoutes.post(ADMIN_ROUTES.LOGIN, adminAuthLimiter, adminLogin);
+adminRoutes.post(ADMIN_ROUTES.LOGOUT, verifyAdmin, logoutAdmin);
 
 // ------------------ User Management Routes ------------------
-adminRoutes.get('/fetchallusers', verifyRoute, fetchAllUsers);
-adminRoutes.patch('/updateuserstatus/:id', verifyRoute, updateUserStatus);
+adminRoutes.get(ADMIN_ROUTES.FETCH_ALL_USERS, verifyAdmin, fetchAllUsers);
+adminRoutes.patch(
+  ADMIN_ROUTES.UPDATE_USER_STATUS,
+  verifyAdmin,
+  updateUserStatus,
+);
 
 // ------------------ Product Management Routes ------------------
-adminRoutes.post('/product', verifyRoute, addProduct);
-adminRoutes.get('/showproducts', verifyRoute, showProducts);
-adminRoutes.get('/showProductById/:id', verifyRoute, showProductById);
-adminRoutes.get('/showproductsIsActive', verifyRoute, showProductsIsActive);
-adminRoutes.get('/showproductsIsActiveOffer', verifyRoute, showProductsIsActiveOffer);
-adminRoutes.put('/product/:id', verifyRoute, editProduct);
-adminRoutes.patch('/toggleProductStatus/:id', verifyRoute, toggleProductStatus);
+adminRoutes.post(ADMIN_ROUTES.ADD_PRODUCT, verifyAdmin, addProduct);
+adminRoutes.get(ADMIN_ROUTES.SHOW_PRODUCTS, verifyAdmin, showProducts);
+adminRoutes.get(
+  ADMIN_ROUTES.SHOW_PRODUCT_BY_ID,
+  verifyAdmin,
+  showProductById,
+);
+adminRoutes.get(
+  ADMIN_ROUTES.SHOW_PRODUCTS_ACTIVE,
+  verifyAdmin,
+  showProductsIsActive,
+);
+adminRoutes.get(
+  ADMIN_ROUTES.SHOW_PRODUCTS_ACTIVE_OFFER,
+  verifyAdmin,
+  showProductsIsActiveOffer,
+);
+adminRoutes.put(ADMIN_ROUTES.EDIT_PRODUCT, verifyAdmin, editProduct);
+adminRoutes.patch(
+  ADMIN_ROUTES.TOGGLE_PRODUCT_STATUS,
+  verifyAdmin,
+  toggleProductStatus,
+);
 
 // ------------------ Category Management Routes ------------------
-adminRoutes.post('/category', verifyRoute, addCategory);
-adminRoutes.get('/getallcategory', verifyRoute, getAllCategories);
-adminRoutes.get('/getallcategoryIsactive', verifyRoute, getAllCategoriesIsactive);
-adminRoutes.put('/editcategory/:id', verifyRoute, editCategory);
-adminRoutes.patch('/toggleCategoryStatus/:id', verifyRoute, toggleCategoryStatus);
+adminRoutes.post(ADMIN_ROUTES.ADD_CATEGORY, verifyAdmin, addCategory);
+adminRoutes.get(
+  ADMIN_ROUTES.GET_ALL_CATEGORIES,
+  verifyAdmin,
+  getAllCategories,
+);
+adminRoutes.get(
+  ADMIN_ROUTES.GET_ALL_CATEGORIES_ACTIVE,
+  verifyAdmin,
+  getAllCategoriesIsactive,
+);
+adminRoutes.put(ADMIN_ROUTES.EDIT_CATEGORY, verifyAdmin, editCategory);
+adminRoutes.patch(
+  ADMIN_ROUTES.TOGGLE_CATEGORY_STATUS,
+  verifyAdmin,
+  toggleCategoryStatus,
+);
 
 // ------------------ Brand Management Routes ------------------
-adminRoutes.post('/addbrand', verifyRoute, addBrand);
-adminRoutes.get('/getallbrands', verifyRoute, getAllBrand);
-adminRoutes.get('/getallIsactiveBrands', verifyRoute, getallIsactiveBrands);
-adminRoutes.patch('/toggleBrandStatus/:id', verifyRoute, toggleBrandStatus);
-adminRoutes.patch('/updateBrandName/:id', verifyRoute, updateBrandName);
+adminRoutes.post(ADMIN_ROUTES.ADD_BRAND, verifyAdmin, addBrand);
+adminRoutes.get(ADMIN_ROUTES.GET_ALL_BRANDS, verifyAdmin, getAllBrand);
+adminRoutes.get(
+  ADMIN_ROUTES.GET_ALL_BRANDS_ACTIVE,
+  verifyAdmin,
+  getallIsactiveBrands,
+);
+adminRoutes.patch(
+  ADMIN_ROUTES.TOGGLE_BRAND_STATUS,
+  verifyAdmin,
+  toggleBrandStatus,
+);
+adminRoutes.patch(
+  ADMIN_ROUTES.UPDATE_BRAND_NAME,
+  verifyAdmin,
+  updateBrandName,
+);
 
 // ------------------ Order Management Routes ------------------
-adminRoutes.get('/orders', verifyRoute, getallorders);
-adminRoutes.post('/order/status/:id', verifyRoute, orderStatusUpdate);
+adminRoutes.get(ADMIN_ROUTES.GET_ALL_ORDERS, verifyAdmin, getallorders);
+adminRoutes.post(ADMIN_ROUTES.ORDER_STATUS, verifyAdmin, orderStatusUpdate);
 
 // ------------------ Coupon Management Routes ------------------
-adminRoutes.post('/Coupon/Add', verifyRoute, addCoupon);
-adminRoutes.get('/Coupon/fetch', verifyRoute, allCoupons);
-adminRoutes.post('/Coupon/update', verifyRoute, updateCoupon);
-adminRoutes.patch('/Coupon/remove', verifyRoute, removeCoupon);
+adminRoutes.post(ADMIN_ROUTES.ADD_COUPON, verifyAdmin, addCoupon);
+adminRoutes.get(ADMIN_ROUTES.FETCH_COUPONS, verifyAdmin, allCoupons);
+adminRoutes.post(ADMIN_ROUTES.UPDATE_COUPON, verifyAdmin, updateCoupon);
+adminRoutes.patch(ADMIN_ROUTES.REMOVE_COUPON, verifyAdmin, removeCoupon);
 
 // ------------------ Offer Management Routes ------------------
-adminRoutes.post('/Offer/Add', verifyRoute, addOffer);
-adminRoutes.get('/Offer/fetch', verifyRoute, allOffers);
-adminRoutes.delete('/Offer/remove/:id', verifyRoute, deleteOffers);
-adminRoutes.put('/Offer/update/:id', verifyRoute, updateOffer);
+adminRoutes.post(ADMIN_ROUTES.ADD_OFFER, verifyAdmin, addOffer);
+adminRoutes.get(ADMIN_ROUTES.FETCH_OFFERS, verifyAdmin, allOffers);
+adminRoutes.delete(ADMIN_ROUTES.REMOVE_OFFER, verifyAdmin, deleteOffers);
+adminRoutes.put(ADMIN_ROUTES.UPDATE_OFFER, verifyAdmin, updateOffer);
 
 // ------------------ Sales Report Management Routes ------------------
-adminRoutes.get('/sales-report', verifyRoute, salesReport);
-adminRoutes.get('/sales-analytics', verifyRoute, getSalesAnalytics);
+adminRoutes.get(ADMIN_ROUTES.SALES_REPORT, verifyAdmin, salesReport);
+adminRoutes.get(
+  ADMIN_ROUTES.SALES_ANALYTICS,
+  verifyAdmin,
+  getSalesAnalytics,
+);
 
 module.exports = adminRoutes;

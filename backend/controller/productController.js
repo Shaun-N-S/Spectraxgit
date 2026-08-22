@@ -49,8 +49,21 @@ const addProduct = async (req, res) => {
 // Controller to show all products
 const showProducts = async (req, res) => {
     try {
-      const products = await Product.find();
-      res.status(200).json({ message: 'Products retrieved successfully', products });
+      const page = Math.max(parseInt(req.query.page) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+      const skip = (page - 1) * limit;
+
+      const [products, total] = await Promise.all([
+        Product.find().skip(skip).limit(limit),
+        Product.countDocuments()
+      ]);
+      res.status(200).json({
+        message: 'Products retrieved successfully',
+        products,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit)
+      });
     } catch (error) {
       res.status(500).json({ message: 'Server error', error: error.message });
     }

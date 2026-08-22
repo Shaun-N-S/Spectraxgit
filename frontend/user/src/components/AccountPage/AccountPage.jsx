@@ -202,7 +202,7 @@ export default function AccountPage() {
         setIsLoading(true);
   
         // Fetch User Details
-        const userResponse = await axiosInstance.get(`/User/Details/${userId}`);
+        const userResponse = await axiosInstance.get('/profile');
         const userData = userResponse.data;
   
         if (!userData?.user) {
@@ -293,7 +293,7 @@ if (!walletData || !walletData.data.walletDetails) {
 
       setProfileData(prev => ({
         ...prev,
-        ...response.data
+        ...response.data.user
       }));
       
       toast.success("Profile updated successfully");
@@ -495,7 +495,6 @@ const handleChangePassword = async () => {
   try {
     setIsPasswordChanging(true);
     const response = await axiosInstance.put('/User/Password', {
-      email: profileData.email,
       oldPassword: passwordForm.oldPassword,
       newPassword: passwordForm.newPassword,
     });

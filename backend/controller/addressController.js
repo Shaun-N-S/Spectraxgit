@@ -5,10 +5,11 @@ const addAddress = async (req, res) => {
   
     try {
       console.log(req.body)
-        const { userId, address, city, state, pinCode, country,phone } = req.body;
+        const userId = req.user.id;
+        const { address, city, state, pinCode, country,phone } = req.body;
 
-        
-        if (!userId || !address || !city || !state || !pinCode || !country || !phone) {
+
+        if (!address || !city || !state || !pinCode || !country || !phone) {
             return res.status(400).json({ message: "All fields are required" });
         }
 
@@ -48,12 +49,8 @@ const addAddress = async (req, res) => {
 const fetchAddress = async (req, res) => {
   console.log("fetchAddress")
     try {
-        const { id: userId } = req.params; // Extract userId from req.params
+        const userId = req.user.id; // Use the authenticated user, not the client-supplied param
         console.log("suer ID........",userId)
-        
-        if (!userId) {
-            return res.status(400).json({ message: "User ID is required" });
-        }
 
         // Fetch the user by ID
         const user = await User.findById(userId);
@@ -77,10 +74,11 @@ const fetchAddress = async (req, res) => {
 const updateAddressStatus = async (req, res) => {
     try {
       const addressId = req.params.id;
-  
-      // Find the address by ID
-      const address = await Address.findById(addressId);
-  
+      const userId = req.user.id;
+
+      // Find the address by ID and verify ownership
+      const address = await Address.findOne({ _id: addressId, userId });
+
       if (!address) {
         return res.status(404).json({ message: "Address not found" });
       }
@@ -106,11 +104,12 @@ const updateAddressStatus = async (req, res) => {
   const updateAddress = async (req, res) => {
     try {
       const { id } = req.params; // Get address ID from URL params
-      const { userId, address, city, state, pinCode, country,phone } = req.body; // Destructure updated fields from request body
-  
+      const userId = req.user.id;
+      const { address, city, state, pinCode, country,phone } = req.body; // Destructure updated fields from request body
+
       // Validate required fields
-      if (!id || !userId) {
-        return res.status(400).json({ message: "Address ID and User ID are required." });
+      if (!id) {
+        return res.status(400).json({ message: "Address ID is required." });
       }
   
       // Find the address by ID and verify ownership
@@ -141,13 +140,14 @@ const updateAddressStatus = async (req, res) => {
   const fetchAddressById = async (req, res) => {
     try {
       const { id } = req.params; // Match the route parameter name
-  
+      const userId = req.user.id;
+
       if (!id) {
         return res.status(400).json({ message: "Address ID is required" });
       }
-  
-      const shippingAddress = await Address.findById(id); 
-  
+
+      const shippingAddress = await Address.findOne({ _id: id, userId });
+
       if (!shippingAddress) {
         return res.status(404).json({ message: "Address not found" });
       }

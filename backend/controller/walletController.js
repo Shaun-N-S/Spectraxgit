@@ -5,11 +5,7 @@ const { model } = require('mongoose');
 
 const getWallet = async (req,res) =>{
     try {
-        const {userId} = req.params;
-
-        if(!userId){
-            return res.status(404).json({message:"ID not found "});
-        }
+        const userId = req.user.id;
 
         const walletDetails = await Wallet.findOne({userId});
         if (walletDetails && walletDetails.transactions) {

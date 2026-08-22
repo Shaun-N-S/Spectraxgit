@@ -126,6 +126,10 @@ const validateCoupon = async (req, res) => {
     try {
         const { couponCode, totalAmount } = req.body;
 
+        if (typeof couponCode !== "string" || !couponCode.trim()) {
+            return res.status(400).json({ message: "Invalid coupon code" });
+        }
+
         // Find the coupon
         const coupon = await Coupon.findOne({
             name: couponCode,
