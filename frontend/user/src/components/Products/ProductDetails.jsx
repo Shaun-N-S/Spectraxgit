@@ -1,23 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { Star, ShoppingCart, Heart, ChevronDown, ChevronUp, Loader2, ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useNavigate, useParams } from 'react-router-dom';
-import axiosInstance from '@/axios/userAxios';
-import { useSelector } from 'react-redux';
-import {toast} from 'react-hot-toast'
-import PriceDisplay from '@/components/PriceDisplay/PriceDisplay';
+import { useState, useEffect } from "react";
+import { ShoppingCart, Heart, Loader2, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useNavigate, useParams } from "react-router-dom";
+import axiosInstance from "@/axios/userAxios";
+import { useSelector } from "react-redux";
+import { toast } from "react-hot-toast";
+import PriceDisplay from "@/components/PriceDisplay/PriceDisplay";
 
 export default function ProductDetail() {
   const [productData, setProductData] = useState(null);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [selectedImage, setSelectedImage] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [brand, setBrand] = useState('');
-  const [zoomStyle, setZoomStyle] = useState({ display: 'none' });
+  const [error, setError] = useState("");
+  const [brand, setBrand] = useState("");
+  const [zoomStyle, setZoomStyle] = useState({ display: "none" });
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [isInWishlist, setIsInWishlist] = useState(false);
   const [offerData, setOfferData] = useState(null);
@@ -27,7 +27,7 @@ export default function ProductDetail() {
     discountedPrice: 0,
     originalPrice: 0,
     savings: 0,
-    discountPercent: 0
+    discountPercent: 0,
   });
   const [wishlistMap, setWishlistMap] = useState({});
   const navigate = useNavigate();
@@ -40,19 +40,31 @@ export default function ProductDetail() {
   const { id } = useParams();
 
   useEffect(() => {
+    // Reset product-specific UI state before loading a different product, so
+    // nothing from the previous product can remain visible or stale while
+    // (or after) the new one loads.
+    setLoading(true);
+    setError(null);
+    setSelectedImage(0);
+    setProductData(null);
+    setSelectedVariant(null);
+    setBrand("");
+    setProductOffer(null);
+    setCategoryOffer(null);
+    setRelatedProducts([]);
     fetchData();
-  }, []);
-
-  
+  }, [id]);
 
   const fetchData = async () => {
     try {
       // Fetch product data
-      const productResponse = await axiosInstance.get(`/showProductsById/${id}`);
+      const productResponse = await axiosInstance.get(
+        `/showProductsById/${id}`,
+      );
       const product = productResponse.data.product;
-      
+
       if (!product) {
-        setError('Product not found');
+        setError("Product not found");
         setLoading(false);
         return;
       }
@@ -61,11 +73,13 @@ export default function ProductDetail() {
 
       if (userId) {
         try {
-          const wishlistResponse = await axiosInstance.get(`/wishlist/${userId}`);
+          const wishlistResponse = await axiosInstance.get(
+            `/wishlist/${userId}`,
+          );
           const wishlistItems = wishlistResponse.data.wishlist?.product || [];
-          
+
           const newWishlistMap = {};
-          wishlistItems.forEach(item => {
+          wishlistItems.forEach((item) => {
             newWishlistMap[item.productId._id] = true;
           });
           setWishlistMap(newWishlistMap);
@@ -74,15 +88,17 @@ export default function ProductDetail() {
           console.error("Error fetching wishlist:", error);
         }
       }
-      
+
       // Safely set initial variant
       if (product.variants && product.variants.length > 0) {
         setSelectedVariant(product.variants[0]);
       }
-      
+
       // Fetch brand data
       try {
-        const brandResponse = await axiosInstance.get(`/showBrandbyId/${product.brandId}`);
+        const brandResponse = await axiosInstance.get(
+          `/showBrandbyId/${product.brandId}`,
+        );
         setBrand(brandResponse.data.brand);
       } catch (error) {
         console.error("Error fetching brand:", error);
@@ -92,7 +108,9 @@ export default function ProductDetail() {
       let productOfferData = null;
       if (product.offerId) {
         try {
-          const productOfferResponse = await axiosInstance.get(`/Offer/fetch/${product.offerId}`);
+          const productOfferResponse = await axiosInstance.get(
+            `/Offer/fetch/${product.offerId}`,
+          );
           productOfferData = productOfferResponse.data.offerData;
           setProductOffer(productOfferData);
         } catch (error) {
@@ -104,7 +122,9 @@ export default function ProductDetail() {
       let categoryOfferData = null;
       if (product.categoryId) {
         try {
-          const categoryOfferResponse = await axiosInstance.get(`/Offer/category/${product.categoryId}`);
+          const categoryOfferResponse = await axiosInstance.get(
+            `/Offer/category/${product.categoryId}`,
+          );
           categoryOfferData = categoryOfferResponse.data.offerData;
           setCategoryOffer(categoryOfferData);
         } catch (error) {
@@ -114,7 +134,11 @@ export default function ProductDetail() {
 
       // Calculate best discount only if we have a valid variant
       if (product.variants && product.variants.length > 0) {
-        calculateBestDiscount(product.variants[0].price, productOfferData, categoryOfferData);
+        calculateBestDiscount(
+          product.variants[0].price,
+          productOfferData,
+          categoryOfferData,
+        );
       }
 
       // Fetch related products if category exists
@@ -124,40 +148,55 @@ export default function ProductDetail() {
 
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching data:', error);
-      setError('Error fetching product data');
+      console.error("Error fetching data:", error);
+      setError("Error fetching product data");
       setLoading(false);
     }
   };
 
-  const calculateBestDiscount = (originalPrice, productOffer, categoryOffer) => {
+  const calculateBestDiscount = (
+    originalPrice,
+    productOffer,
+    categoryOffer,
+  ) => {
     let bestDiscountPercent = 0;
     const currentDate = new Date();
 
     // Check product offer
-    if (productOffer && 
-        productOffer.isActive && 
-        new Date(productOffer.startDate) <= currentDate && 
-        new Date(productOffer.endDate) >= currentDate) {
-      bestDiscountPercent = Math.max(bestDiscountPercent, productOffer.discountPercent);
+    if (
+      productOffer &&
+      productOffer.isActive &&
+      new Date(productOffer.startDate) <= currentDate &&
+      new Date(productOffer.endDate) >= currentDate
+    ) {
+      bestDiscountPercent = Math.max(
+        bestDiscountPercent,
+        productOffer.discountPercent,
+      );
     }
 
     // Check category offer
-    if (categoryOffer && 
-        categoryOffer.isActive && 
-        new Date(categoryOffer.startDate) <= currentDate && 
-        new Date(categoryOffer.endDate) >= currentDate) {
-      bestDiscountPercent = Math.max(bestDiscountPercent, categoryOffer.discountPercent);
+    if (
+      categoryOffer &&
+      categoryOffer.isActive &&
+      new Date(categoryOffer.startDate) <= currentDate &&
+      new Date(categoryOffer.endDate) >= currentDate
+    ) {
+      bestDiscountPercent = Math.max(
+        bestDiscountPercent,
+        categoryOffer.discountPercent,
+      );
     }
 
-    const discountedPrice = originalPrice - (originalPrice * (bestDiscountPercent / 100));
+    const discountedPrice =
+      originalPrice - originalPrice * (bestDiscountPercent / 100);
     const savings = originalPrice - discountedPrice;
 
     setBestDiscount({
       discountedPrice: discountedPrice,
       originalPrice: originalPrice,
       savings: savings,
-      discountPercent: bestDiscountPercent
+      discountPercent: bestDiscountPercent,
     });
   };
 
@@ -167,18 +206,22 @@ export default function ProductDetail() {
       calculateBestDiscount(selectedVariant.price, productOffer, categoryOffer);
     }
   }, [selectedVariant, productOffer, categoryOffer]);
-  
 
-  console.log("offer ID .............................................",productData?.offerId)
+  console.log(
+    "offer ID .............................................",
+    productData?.offerId,
+  );
 
   const fetchRelatedProducts = (category) => {
     axiosInstance
       .get(`/productsByCategory/${category}`)
       .then((response) => {
-        setRelatedProducts(response.data.products.filter((product) => product.id !== id));
+        setRelatedProducts(
+          response.data.products.filter((product) => product.id !== id),
+        );
       })
       .catch(() => {
-        console.error('Error fetching related products');
+        console.error("Error fetching related products");
       });
   };
 
@@ -196,7 +239,7 @@ export default function ProductDetail() {
     const y = ((e.clientY - rect.top) / rect.height) * 100;
 
     setZoomStyle({
-      display: 'block',
+      display: "block",
       backgroundImage: `url(${productData.productImage[selectedImage]})`,
       backgroundPosition: `${x}% ${y}%`,
       left: `${e.clientX - rect.left - 75}px`,
@@ -204,43 +247,38 @@ export default function ProductDetail() {
     });
   };
 
-
-
   const handleCart = async (userId, productId, variantId) => {
-    console.log("suer ID  ....",userId)
-    if(!userId){
+    console.log("suer ID  ....", userId);
+    if (!userId) {
       toast.error("Please login to add items to cart");
-      navigate('/login');
+      navigate("/login");
       return;
     }
     try {
       // Using selectedVariant._id instead of hardcoded first variant
       await axiosInstance.post(
-        '/Cart',
-        { 
+        "/Cart",
+        {
           userId,
           productId,
           variantId: selectedVariant._id, // Use selected variant
-          quantity: 1
+          quantity: 1,
         },
-        { withCredentials: true } 
+        { withCredentials: true },
       );
 
-      
-      
       toast.success("Added to cart");
-      navigate('/cart');
+      navigate("/cart");
     } catch (error) {
       console.error("Error in handle cart:", error);
       toast.error("Product is out of stock");
     }
   };
-  
 
   const handleWishlist = async () => {
     if (!userId) {
       toast.error("Please login to add items to wishlist");
-      navigate('/login');
+      navigate("/login");
       return;
     }
 
@@ -250,13 +288,13 @@ export default function ProductDetail() {
 
       if (isCurrentlyInWishlist) {
         // Remove from wishlist
-        response = await axiosInstance.post('/remove/wishlist', {
+        response = await axiosInstance.post("/remove/wishlist", {
           userId,
           productId: id,
           variantId: selectedVariant._id,
         });
         if (response.data.success) {
-          setWishlistMap(prev => {
+          setWishlistMap((prev) => {
             const newMap = { ...prev };
             delete newMap[id];
             return newMap;
@@ -266,15 +304,15 @@ export default function ProductDetail() {
         }
       } else {
         // Add to wishlist
-        response = await axiosInstance.post('/add/wishlist', {
+        response = await axiosInstance.post("/add/wishlist", {
           userId,
           productId: id,
           variantId: selectedVariant._id,
         });
         if (response.data.success) {
-          setWishlistMap(prev => ({
+          setWishlistMap((prev) => ({
             ...prev,
-            [id]: true
+            [id]: true,
           }));
           setIsInWishlist(true);
           toast.success("Added to wishlist");
@@ -286,31 +324,30 @@ export default function ProductDetail() {
     }
   };
 
-
-
-
-
   const handleMouseLeave = () => {
-    setZoomStyle({ display: 'none' });
+    setZoomStyle({ display: "none" });
   };
 
-  if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-gray-900">
-      <Loader2 className="h-12 w-12 animate-spin text-primary" />
-    </div>
-  );
-  
-  if (error) return (
-    <div className="flex h-screen items-center justify-center bg-gray-900">
-      <p className="text-red-400 text-xl">{error}</p>
-    </div>
-  );
+  if (loading)
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-900">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
 
-  if (!productData) return (
-    <div className="flex h-screen items-center justify-center bg-gray-900">
-      <p className="text-white text-xl">Product not found</p>
-    </div>
-  );
+  if (error)
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-900">
+        <p className="text-red-400 text-xl">{error}</p>
+      </div>
+    );
+
+  if (!productData)
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-900">
+        <p className="text-white text-xl">Product not found</p>
+      </div>
+    );
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -344,8 +381,8 @@ export default function ProductDetail() {
                 className="absolute w-80 h-80 border-2 border-primary/50 pointer-events-none bg-no-repeat bg-cover  "
                 style={{
                   ...zoomStyle,
-                  position: 'absolute',
-                  backgroundSize: '300%',
+                  position: "absolute",
+                  backgroundSize: "300%",
                 }}
               ></div>
             </div>
@@ -355,7 +392,9 @@ export default function ProductDetail() {
                   key={index}
                   onClick={() => setSelectedImage(index)}
                   className={`relative aspect-square overflow-hidden rounded-lg transition-all duration-300 ${
-                    selectedImage === index ? 'ring-2 ring-primary scale-95' : 'hover:scale-105'
+                    selectedImage === index
+                      ? "ring-2 ring-primary scale-95"
+                      : "hover:scale-105"
                   }`}
                 >
                   <img
@@ -367,24 +406,32 @@ export default function ProductDetail() {
               ))}
             </div>
           </div>
-  
+
           {/* Product Info */}
           <div className="space-y-8">
             <div className="space-y-4">
-              <h1 className="text-4xl font-bold tracking-tight text-white">{productData.title}</h1>
-              <PriceDisplay 
-  originalPrice={selectedVariant ? selectedVariant.price : productData.price}
-  productOffer={productOffer}
-  categoryOffer={categoryOffer}
-/>
+              <h1 className="text-4xl font-bold tracking-tight text-white">
+                {productData.title}
+              </h1>
+              <PriceDisplay
+                originalPrice={
+                  selectedVariant ? selectedVariant.price : productData.price
+                }
+                productOffer={productOffer}
+                categoryOffer={categoryOffer}
+              />
               <p className="text-lg text-gray-300 leading-relaxed">
                 {productData.description}
               </p>
               <p className="text-sm text-gray-400">
-              Available Stock :  
-              <span className={`font-semibold ${selectedVariant.availableQuantity > 0 ? 'text-white' : 'text-red-500'}`}>
-               {selectedVariant.availableQuantity > 0 ? selectedVariant.availableQuantity : "Out of Stock"}
-              </span>
+                Available Stock :
+                <span
+                  className={`font-semibold ${selectedVariant.availableQuantity > 0 ? "text-white" : "text-red-500"}`}
+                >
+                  {selectedVariant.availableQuantity > 0
+                    ? selectedVariant.availableQuantity
+                    : "Out of Stock"}
+                </span>
               </p>
             </div>
 
@@ -396,13 +443,15 @@ export default function ProductDetail() {
                   <Button
                     key={index}
                     onClick={() => handleVariantChange(variant)}
-                    variant={selectedVariant === variant ? "default" : "outline"}
+                    variant={
+                      selectedVariant === variant ? "default" : "outline"
+                    }
                     className="bg-blue-950 w-full justify-start transition-all duration-300 hover:scale-105"
                   >
                     <div className="text-left">
                       {variant.attributes.map((attr, attrIndex) => (
                         <div key={attrIndex}>
-                          {attr.name}: {attr.value} 
+                          {attr.name}: {attr.value}
                         </div>
                       ))}
                     </div>
@@ -413,27 +462,29 @@ export default function ProductDetail() {
 
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   className="w-full bg-blue-950 text-primary-foreground hover:bg-blue-950 transition-all duration-300 hover:scale-105"
-                  onClick={() => handleCart(userId, productData._id, selectedVariant._id)}
+                  onClick={() =>
+                    handleCart(userId, productData._id, selectedVariant._id)
+                  }
                 >
                   <ShoppingCart className="w-4 h-4 mr-2" />
                   Add to Cart
                 </Button>
-                <Button 
-      size="lg" 
-      variant="outline" 
-      className={`w-full border-primary text-primary hover: transition-all duration-300 hover:scale-105`}
-      onClick={handleWishlist}
-    >
-      <Heart 
-        className={`w-4 h-4 mr-2 ${
-          wishlistMap[id] ? 'text-red-500 fill-current' : ''
-        }`}
-      />
-      {wishlistMap[id] ? 'Remove from Wishlist' : 'Add to Wishlist'}
-    </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className={`w-full border-primary text-primary hover: transition-all duration-300 hover:scale-105`}
+                  onClick={handleWishlist}
+                >
+                  <Heart
+                    className={`w-4 h-4 mr-2 ${
+                      wishlistMap[id] ? "text-red-500 fill-current" : ""
+                    }`}
+                  />
+                  {wishlistMap[id] ? "Remove from Wishlist" : "Add to Wishlist"}
+                </Button>
               </div>
               {/* <Button size="lg" className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/90 transition-all duration-300 hover:scale-100 hover:bg-green-400">
                 Buy Now
@@ -442,15 +493,25 @@ export default function ProductDetail() {
 
             <Tabs defaultValue="specifications" className="w-full">
               <TabsList className="grid w-full grid-cols-2 bg-gray-800">
-                <TabsTrigger value="specifications" className="text-white data-[state=active]:bg-gray-700">Specifications</TabsTrigger>
-                <TabsTrigger value="details" className="text-white data-[state=active]:bg-gray-700">Details</TabsTrigger>
+                <TabsTrigger
+                  value="specifications"
+                  className="text-white data-[state=active]:bg-gray-700"
+                >
+                  Specifications
+                </TabsTrigger>
+                <TabsTrigger
+                  value="details"
+                  className="text-white data-[state=active]:bg-gray-700"
+                >
+                  Details
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="specifications" className="space-y-4">
                 <Card className="p-6 bg-gray-800 text-white border-gray-700">
                   <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <dt className="font-medium text-gray-400">Brand</dt>
-                      <dd>{brand.name || 'N/A'}</dd>
+                      <dd>{brand.name || "N/A"}</dd>
                     </div>
                     <div>
                       <dt className="font-medium text-gray-400">Model</dt>
@@ -479,11 +540,15 @@ export default function ProductDetail() {
                 <Card className="p-6 bg-gray-800 text-white border-gray-700">
                   <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <dt className="font-medium text-gray-400">Manufacturer</dt>
+                      <dt className="font-medium text-gray-400">
+                        Manufacturer
+                      </dt>
                       <dd>{productData.specifications.manufacturer}</dd>
                     </div>
                     <div>
-                      <dt className="font-medium text-gray-400">Country of Origin</dt>
+                      <dt className="font-medium text-gray-400">
+                        Country of Origin
+                      </dt>
                       <dd>{productData.specifications.countryOfOrigin}</dd>
                     </div>
                     <div>
@@ -500,10 +565,15 @@ export default function ProductDetail() {
         {/* Related Products */}
         {relatedProducts.length > 0 && (
           <section className="space-y-6">
-            <h2 className="text-3xl font-bold tracking-tight text-center text-white">Related Products</h2>
+            <h2 className="text-3xl font-bold tracking-tight text-center text-white">
+              Related Products
+            </h2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {relatedProducts.map((product) => (
-                <Card key={product.id} className="overflow-hidden group bg-gray-800 border-gray-700 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-primary/20">
+                <Card
+                  key={product.id}
+                  className="overflow-hidden group bg-gray-800 border-gray-700 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-primary/20"
+                >
                   <div className="aspect-square relative">
                     <img
                       src={product.productImage[0]}
@@ -512,10 +582,14 @@ export default function ProductDetail() {
                     />
                   </div>
                   <div className="p-4 space-y-2">
-                    <h3 className="font-semibold truncate text-white">{product.title}</h3>
-                    <p className="text-lg font-bold text-white">₹{product.price?.toFixed(2)}</p>
-                    <Button 
-                      variant="secondary" 
+                    <h3 className="font-semibold truncate text-white">
+                      {product.title}
+                    </h3>
+                    <p className="text-lg font-bold text-white">
+                      ₹{product.price?.toFixed(2)}
+                    </p>
+                    <Button
+                      variant="secondary"
                       className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/90 transition-all duration-300"
                       onClick={() => handleShop(product._id)}
                     >
@@ -529,7 +603,7 @@ export default function ProductDetail() {
         )}
 
         {/* Reviews */}
-        <section className="space-y-6">
+        {/* <section className="space-y-6">
           <h2 className="text-3xl font-bold tracking-tight text-center text-white">Customer Reviews</h2>
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {[
@@ -569,9 +643,8 @@ export default function ProductDetail() {
               </Card>
             ))}
           </div>
-        </section>
+        </section> */}
       </div>
     </div>
   );
 }
-

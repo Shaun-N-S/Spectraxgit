@@ -15,24 +15,9 @@ const { handleRazorpayWebhook } = require("./controller/orderController");
 
 const PORT = process.env.PORT || 4000;
 
-// Trust exactly one hop of reverse proxy (the standard topology for this
-// app's deployment targets — a single load balancer/reverse proxy sits in
-// front of the Node process). Required for express-rate-limit and any other
-// IP-based logic to read the real client IP from X-Forwarded-For instead of
-// the proxy's own address. `true` (trust all hops) is deliberately avoided —
-// it accepts an unbounded, spoofable chain; `1` is the minimum value that
-// still works correctly behind exactly one proxy.
 app.set("trust proxy", 1);
 
-// Razorpay webhook (B5). Registered before any other middleware — including
-// the global JSON body parser mounted further down — because signature
-// verification needs the exact raw request bytes Razorpay signed.
-// express.raw() is scoped to this single path only; it never runs for any
-// other route, and the global bodyParser.json() below is completely
-// unaffected (Express never reaches it for a request already fully handled
-// by this route). Not behind cors()/apiLimiter/session — Razorpay's servers
-// call this directly, with no Origin header and no cookies, and the request
-// is authenticated by its signature, not by the app's usual middleware.
+
 app.post(
   "/webhook/razorpay",
   express.raw({ type: "application/json" }),
@@ -61,11 +46,7 @@ app.use(cors(corsOptions));
 
 app.use(bodyParser.json());
 
-// Mounted after cors() so a 429 response still carries the correct CORS
-// headers (otherwise the browser would surface a confusing CORS failure
-// instead of the actual rate-limit response). Applies to every request as a
-// generous baseline; the auth-specific limiters below apply on top of this
-// for their individual sensitive routes.
+
 app.use(apiLimiter);
 
 app.use(
@@ -76,8 +57,6 @@ app.use(
     store: MongoStore.create({
       mongoUrl: process.env.MONGODB_URI,
       collectionName: "sessions",
-      // Prunes expired session documents periodically; connect-mongo's default
-      // touchAfter avoids rewriting the session on every single request.
       touchAfter: 24 * 3600,
     }),
     cookie: {
