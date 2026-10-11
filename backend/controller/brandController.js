@@ -1,25 +1,27 @@
 const Brand = require('../models/brandSchema');
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { COMMON_MESSAGES, BRAND_MESSAGES } = require('../constants/messages');
 
 const addBrand = async(req,res)=>{
     try {
         const {name,status} = req.body;
 
         if (typeof name !== "string" || !name.trim()) {
-            return res.status(400).json({message:"Invalid name"});
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({message:COMMON_MESSAGES.INVALID_NAME});
         }
 
         const existingBrand = await Brand.findOne({name});
         if(existingBrand){
-            return res.status(400).json({message:"Brand already exists"});
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({message:BRAND_MESSAGES.ALREADY_EXISTS});
 
         }
 
         const newBrand = new Brand({name,status});
         await newBrand.save();
-        return res.status(201).json({message:"Brand added successfully"});
+        return res.status(HTTP_STATUS.CREATED).json({message:BRAND_MESSAGES.ADDED});
     } catch (error) {
         console.log('Error in adding brand :',error);
-        return res.status(500).json({message:"Internal Server Error"});
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({message:COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE});
     }
 };
 
@@ -35,7 +37,7 @@ const getAllBrand = async(req,res)=>{
             Brand.countDocuments()
         ]);
 
-        return res.status(200).json({
+        return res.status(HTTP_STATUS.OK).json({
             brand,
             total,
             page,
@@ -43,16 +45,16 @@ const getAllBrand = async(req,res)=>{
         })
     } catch (error) {
         console.log('Error in fetching brand :',error);
-        return res.status(500).json({message:'Internal server error'})
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({message:COMMON_MESSAGES.INTERNAL_SERVER_ERROR})
     }
 };
 const getallIsactiveBrands = async(req,res)=>{
     try {
         const brand = await Brand.find({status:'active'});
-        return res.status(200).json({brand})
+        return res.status(HTTP_STATUS.OK).json({brand})
     } catch (error) {
         console.log('Error in fetching brand :',error);
-        return res.status(500).json({message:'Internal server error'})
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({message:COMMON_MESSAGES.INTERNAL_SERVER_ERROR})
     }
 };
 
@@ -65,7 +67,7 @@ const toggleBrandStatus = async (req, res) => {
       // Find the brand by ID
       const brand = await Brand.findById(id);
       if (!brand) {
-        return res.status(404).json({ message: 'Brand not found' });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: BRAND_MESSAGES.NOT_FOUND });
       }
     
       // Toggle the status based on the current status
@@ -73,10 +75,10 @@ const toggleBrandStatus = async (req, res) => {
   
       await brand.save();
     
-      res.status(200).json({ message: 'Brand status updated successfully', brand });
+      res.status(HTTP_STATUS.OK).json({ message: BRAND_MESSAGES.STATUS_UPDATED, brand });
     } catch (error) {
       console.error('Error updating brand status:', error);
-      res.status(500).json({ message: 'Internal server error' });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
     }
   };
 
@@ -88,19 +90,19 @@ const toggleBrandStatus = async (req, res) => {
   
       // Ensure the brand name is provided
       if (!name || name.trim() === '') {
-        return res.status(400).json({ message: 'Brand name cannot be empty' });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: BRAND_MESSAGES.NAME_REQUIRED });
       }
   
       // Find the brand by ID
       const brand = await Brand.findById(brandId);
   
       if (!brand) {
-        return res.status(404).json({ message: 'Brand not found' });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: BRAND_MESSAGES.NOT_FOUND });
       }
   
       // Check if the brand is active (not soft-deleted)
       if (brand.status === 'inactive') {
-        return res.status(400).json({ message: 'Cannot edit an inactive brand' });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: BRAND_MESSAGES.CANNOT_EDIT_INACTIVE });
       }
   
       // Update the brand name
@@ -109,13 +111,13 @@ const toggleBrandStatus = async (req, res) => {
       // Save the updated brand to the database
       const updatedBrand = await brand.save();
   
-      return res.status(200).json({
-        message: 'Brand name updated successfully',
+      return res.status(HTTP_STATUS.OK).json({
+        message: BRAND_MESSAGES.NAME_UPDATED,
         brand: updatedBrand,
       });
     } catch (error) {
       console.error('Error updating brand name:', error);
-      return res.status(500).json({ message: 'Internal server error' });
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
     }
   };
   
@@ -128,13 +130,13 @@ const toggleBrandStatus = async (req, res) => {
       const brandData = await Brand.findById(id);
   
       if (!brandData) {
-        return res.status(404).json({ message: "Brand not found" });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: BRAND_MESSAGES.NOT_FOUND });
       }
   
-      return res.status(200).json({ message: "Brand found successfully", brand: brandData });
+      return res.status(HTTP_STATUS.OK).json({ message: BRAND_MESSAGES.FOUND, brand: brandData });
     } catch (error) {
       console.error('Error fetching brand:', error);
-      return res.status(500).json({ message: "Internal Server Error", error });
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE, error });
     }
   };
   

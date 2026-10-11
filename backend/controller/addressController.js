@@ -1,5 +1,7 @@
 const Address = require('../models/addressSchema');
 const User = require('../models/userModel');
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { COMMON_MESSAGES, ADDRESS_MESSAGES } = require('../constants/messages');
 
 const addAddress = async (req, res) => {
   
@@ -10,18 +12,18 @@ const addAddress = async (req, res) => {
 
 
         if (!address || !city || !state || !pinCode || !country || !phone) {
-            return res.status(400).json({ message: "All fields are required" });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COMMON_MESSAGES.ALL_FIELDS_REQUIRED });
         }
 
         
         const user = await User.findById(userId);
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: COMMON_MESSAGES.USER_NOT_FOUND });
         }
 
         const existingAddress = await Address.findOne({ userId, address, city, state, pinCode, country ,phone});
         if (existingAddress) {
-            return res.status(409).json({ message: "Address already exists" });
+            return res.status(HTTP_STATUS.CONFLICT).json({ message: ADDRESS_MESSAGES.ALREADY_EXISTS });
         }
 
         const newAddress = new Address({
@@ -36,10 +38,10 @@ const addAddress = async (req, res) => {
 
         await newAddress.save();
 
-        return res.status(201).json({ message: "Address added successfully", newAddress });
+        return res.status(HTTP_STATUS.CREATED).json({ message: ADDRESS_MESSAGES.ADDED, newAddress });
     } catch (error) {
         console.log("Error in addAddress:", error);
-        return res.status(500).json({ message: "Internal server error" });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
     }
 };
 
@@ -56,17 +58,17 @@ const fetchAddress = async (req, res) => {
         const user = await User.findById(userId);
 
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: COMMON_MESSAGES.USER_NOT_FOUND });
         }
 
         // Fetch address associated with the user
         const address = await Address.find({ userId , status:'active' });
 
-        return res.status(200).json({ message: "Address fetched successfully", address });
+        return res.status(HTTP_STATUS.OK).json({ message: ADDRESS_MESSAGES.FETCHED, address });
 
     } catch (error) {
         console.error("Error in fetching address:", error);
-        return res.status(500).json({ message: "Internal server error" });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
     }
 };
 
@@ -80,7 +82,7 @@ const updateAddressStatus = async (req, res) => {
       const address = await Address.findOne({ _id: addressId, userId });
 
       if (!address) {
-        return res.status(404).json({ message: "Address not found" });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: ADDRESS_MESSAGES.NOT_FOUND });
       }
   
       
@@ -90,13 +92,13 @@ const updateAddressStatus = async (req, res) => {
       address.status = newStatus;
       await address.save();
   
-      res.status(200).json({ 
-        message: `Address status changed to ${newStatus} successfully`, 
+      res.status(HTTP_STATUS.OK).json({ 
+        message: ADDRESS_MESSAGES.statusChanged(newStatus), 
         address 
       });
     } catch (error) {
       console.error("Error updating address status:", error);
-      res.status(500).json({ message: "Failed to update address status" });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: ADDRESS_MESSAGES.STATUS_UPDATE_FAILED });
     }
   };
   
@@ -109,14 +111,14 @@ const updateAddressStatus = async (req, res) => {
 
       // Validate required fields
       if (!id) {
-        return res.status(400).json({ message: "Address ID is required." });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: ADDRESS_MESSAGES.ID_REQUIRED_WITH_PERIOD });
       }
   
       // Find the address by ID and verify ownership
       const existingAddress = await Address.findOne({ _id: id, userId });
   
       if (!existingAddress) {
-        return res.status(404).json({ message: "Address not found or unauthorized." });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: ADDRESS_MESSAGES.NOT_FOUND_OR_UNAUTHORIZED });
       }
   
       // Update address fields
@@ -130,10 +132,10 @@ const updateAddressStatus = async (req, res) => {
       // Save updated address
       await existingAddress.save();
   
-      res.status(200).json({ message: "Address updated successfully", data: existingAddress });
+      res.status(HTTP_STATUS.OK).json({ message: ADDRESS_MESSAGES.UPDATED, data: existingAddress });
     } catch (error) {
       console.error("Error updating address:", error);
-      res.status(500).json({ message: "Failed to update address", error: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: ADDRESS_MESSAGES.UPDATE_FAILED, error: error.message });
     }
   };
 
@@ -143,22 +145,22 @@ const updateAddressStatus = async (req, res) => {
       const userId = req.user.id;
 
       if (!id) {
-        return res.status(400).json({ message: "Address ID is required" });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: ADDRESS_MESSAGES.ID_REQUIRED });
       }
 
       const shippingAddress = await Address.findOne({ _id: id, userId });
 
       if (!shippingAddress) {
-        return res.status(404).json({ message: "Address not found" });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: ADDRESS_MESSAGES.NOT_FOUND });
       }
   
-      return res.status(200).json({
-        message: "Address found successfully",
+      return res.status(HTTP_STATUS.OK).json({
+        message: ADDRESS_MESSAGES.FOUND,
         address: shippingAddress,
       });
     } catch (error) {
       console.error("Error fetching address:", error);
-      return res.status(500).json({ message: "Error fetching address", error: error.message });
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: ADDRESS_MESSAGES.FETCH_FAILED, error: error.message });
     }
   };
   

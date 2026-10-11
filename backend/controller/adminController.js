@@ -1,20 +1,24 @@
 const User = require("../models/userModel");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const { HTTP_STATUS } = require("../constants/httpStatus");
+const { COMMON_MESSAGES, AUTH_MESSAGES, USER_MESSAGES } = require("../constants/messages");
 
 const adminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (typeof email !== "string" || !email.trim()) {
-      return res.status(400).json({ message: "Invalid email" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.INVALID_EMAIL });
     }
 
     const adminInfo = await User.findOne({ email });
 
     if (!adminInfo) {
-      return res.status(401).json({
-        message: "Invalid credentials",
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        message: AUTH_MESSAGES.INVALID_CREDENTIALS,
       });
     }
 
@@ -31,8 +35,8 @@ const adminLogin = async (req, res) => {
           sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
         });
 
-        return res.status(200).json({
-          message: "Login Successful",
+        return res.status(HTTP_STATUS.OK).json({
+          message: AUTH_MESSAGES.ADMIN_LOGIN_SUCCESS,
           _id: adminInfo._id,
           firstName: adminInfo.firstName,
           lastName: adminInfo.lastName,
@@ -40,14 +44,20 @@ const adminLogin = async (req, res) => {
           phone: adminInfo.phone,
         });
       } else {
-        return res.status(401).json({ message: "Invalid password" });
+        return res
+          .status(HTTP_STATUS.UNAUTHORIZED)
+          .json({ message: AUTH_MESSAGES.INVALID_PASSWORD });
       }
     } else {
-      return res.status(403).json({ message: "No access" });
+      return res
+        .status(HTTP_STATUS.FORBIDDEN)
+        .json({ message: AUTH_MESSAGES.NO_ACCESS });
     }
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Internal Server Error" });
+    return res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE });
   }
 };
 
@@ -57,14 +67,20 @@ const fetchAllUsers = async (req, res) => {
     const users = await User.find({ isAdmin: false }).select("-password");
 
     if (!users || users.length === 0) {
-      return res.status(404).json({ message: "No users found" });
+      return res
+        .status(HTTP_STATUS.NOT_FOUND)
+        .json({ message: USER_MESSAGES.NO_USERS_FOUND });
     }
 
     // Return the list of users
-    res.status(200).json({ message: "Users fetched successfully", users });
+    res
+      .status(HTTP_STATUS.OK)
+      .json({ message: USER_MESSAGES.USERS_FETCHED, users });
   } catch (error) {
     console.error("Error fetching users:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.SERVER_ERROR, error: error.message });
   }
 };
 
@@ -74,7 +90,9 @@ const logoutAdmin = async (req, res) => {
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   });
-  return res.status(200).json({ message: "Logged out successfully" });
+  return res
+    .status(HTTP_STATUS.OK)
+    .json({ message: AUTH_MESSAGES.LOGOUT_SUCCESS });
 };
 
 module.exports = {

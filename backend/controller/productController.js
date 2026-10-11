@@ -1,5 +1,7 @@
 const Product = require("../models/productSchema");
 const Order = require("../models/orderSchema")
+const { HTTP_STATUS } = require("../constants/httpStatus");
+const { COMMON_MESSAGES, PRODUCT_MESSAGES } = require("../constants/messages");
 
 
 
@@ -11,7 +13,7 @@ const addProduct = async (req, res) => {
     console.log(JSON.stringify(req.body))
     // Validate required fields
     if (!title || !sku || !price || !availableQuantity || !productImages || !categoryId) {
-      return res.status(400).json({ message: 'All fields are required' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COMMON_MESSAGES.ALL_FIELDS_REQUIRED });
     }
 
     // Create a new product instance
@@ -33,15 +35,15 @@ const addProduct = async (req, res) => {
     // Save to the database
     await newProduct.save();
 
-    res.status(201).json({ message: 'Product added successfully', product: newProduct });
+    res.status(HTTP_STATUS.CREATED).json({ message: PRODUCT_MESSAGES.ADDED, product: newProduct });
   } catch (error) {
     if (error.code === 11000) {
       console.log(error)
-      return res.status(400).json({ message: 'Duplicate key error: title or SKU must be unique' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: PRODUCT_MESSAGES.DUPLICATE_TITLE_OR_SKU });
       
     }
     console.log(error )
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.SERVER_ERROR, error: error.message });
   }
 };
   
@@ -57,15 +59,15 @@ const showProducts = async (req, res) => {
         Product.find().skip(skip).limit(limit),
         Product.countDocuments()
       ]);
-      res.status(200).json({
-        message: 'Products retrieved successfully',
+      res.status(HTTP_STATUS.OK).json({
+        message: PRODUCT_MESSAGES.LIST_RETRIEVED,
         products,
         total,
         page,
         totalPages: Math.ceil(total / limit)
       });
     } catch (error) {
-      res.status(500).json({ message: 'Server error', error: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.SERVER_ERROR, error: error.message });
     }
   };
 
@@ -74,9 +76,9 @@ const showProducts = async (req, res) => {
   const showProductsIsActive = async (req,res)=>{
     try {
       const products = await Product.find({status:"active"});
-      res.status(200).json({ message: 'Products retrieved successfully', products });
+      res.status(HTTP_STATUS.OK).json({ message: PRODUCT_MESSAGES.LIST_RETRIEVED, products });
     } catch (error) {
-      res.status(500).json({ message: 'Server error', error: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.SERVER_ERROR, error: error.message });
     }
   }
 
@@ -86,9 +88,9 @@ const showProducts = async (req, res) => {
         offerId: { $exists: false }, 
         status: "active" 
     });
-      res.status(200).json({ message: 'Products retrieved successfully', products });
+      res.status(HTTP_STATUS.OK).json({ message: PRODUCT_MESSAGES.LIST_RETRIEVED, products });
     } catch (error) {
-      res.status(500).json({ message: 'Server error', error: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.SERVER_ERROR, error: error.message });
     }
   }
 
@@ -103,14 +105,14 @@ const showProductById = async (req, res) => {
       const product = await Product.findById(id);
   
       if (!product) {
-        return res.status(404).json({ message: 'Product not found' });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: COMMON_MESSAGES.PRODUCT_NOT_FOUND });
       }
 
       
   
-      res.status(200).json({ message: 'Product retrieved successfully', product });
+      res.status(HTTP_STATUS.OK).json({ message: PRODUCT_MESSAGES.RETRIEVED, product });
     } catch (error) {
-      res.status(500).json({ message: 'Server error', error: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.SERVER_ERROR, error: error.message });
     }
   };
 
@@ -133,13 +135,13 @@ const showProductById = async (req, res) => {
       const updatedProduct = await Product.findByIdAndUpdate(id, updatedFields, { new: true });
   
       if (!updatedProduct) {
-        return res.status(404).json({ message: 'Product not found' });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: COMMON_MESSAGES.PRODUCT_NOT_FOUND });
       }
   
-      res.status(200).json({ message: 'Product updated successfully', product: updatedProduct });
+      res.status(HTTP_STATUS.OK).json({ message: PRODUCT_MESSAGES.UPDATED, product: updatedProduct });
     } catch (error) {
       console.error('Error updating product:', error);
-      res.status(500).json({ message: 'Server error', error: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.SERVER_ERROR, error: error.message });
     }
   };
   
@@ -151,21 +153,21 @@ const showProductById = async (req, res) => {
   
       // Validate if the category ID is provided
       if (!id) {
-        return res.status(400).json({ message: 'Category ID is required' });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: PRODUCT_MESSAGES.CATEGORY_ID_REQUIRED });
       }
   
       // Find products with the matching category ID
       const products = await Product.find({ categoryId: id });
   
       if (products.length === 0) {
-        return res.status(404).json({ message: 'No products found for this category' });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: PRODUCT_MESSAGES.NONE_IN_CATEGORY });
       }
   
       // Return the found products
-      res.status(200).json({ success: true, products });
+      res.status(HTTP_STATUS.OK).json({ success: true, products });
     } catch (error) {
       console.error('Error fetching products by category:', error);
-      res.status(500).json({ message: 'Internal server error' });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
     }
   };
   
@@ -186,13 +188,13 @@ const toggleProductStatus = async(req,res)=>{
     );
 
     if(!product){
-      return res.status(404).json({message:"Product not found "});
+      return res.status(HTTP_STATUS.NOT_FOUND).json({message:COMMON_MESSAGES.PRODUCT_NOT_FOUND_WITH_TRAILING_SPACE});
     }
 
-    return res.status(200).json({message:`Product Status updated to ${status} `,product});
+    return res.status(HTTP_STATUS.OK).json({message:PRODUCT_MESSAGES.statusUpdated(status),product});
   } catch (error) {
     console.error('Error toggling product status :',error);
-    return res.status(500).json({message:"Internal Server Error"});
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({message:COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE});
   }
 }
 
@@ -262,10 +264,10 @@ const filteredProduct = async (req, res) => {
     console.log(sortOptions)
     const products = await Product.find({...filter,status:"active"}).sort(sortOptions);
 
-    return res.status(200).json(products);
+    return res.status(HTTP_STATUS.OK).json(products);
   } catch (error) {
     console.error('Error in filtering products:', error);
-    return res.status(500).json({ message: "Internal Server Error" });
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE });
   }
 };
 
@@ -280,7 +282,7 @@ const searchProducts = async (req, res) => {
     const searchResults = await Product.find(searchFilter);
     return res.json({ data: searchResults });
   } catch (error) {
-    return res.status(500).json({ message: 'Error searching products', error });
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: PRODUCT_MESSAGES.SEARCH_FAILED, error });
   }
 };
 

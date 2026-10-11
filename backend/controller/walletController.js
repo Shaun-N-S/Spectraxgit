@@ -1,6 +1,8 @@
 const Wallet = require('../models/walletSchema');
 const User = require('../models/userModel');
 const { model } = require('mongoose');
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { WALLET_MESSAGES } = require('../constants/messages');
 
 
 const getWallet = async (req,res) =>{
@@ -13,10 +15,10 @@ const getWallet = async (req,res) =>{
           }
         console.log(walletDetails);
 
-        return res.status(200).json({message:"Wallet details fetched succesfully !",walletDetails});
+        return res.status(HTTP_STATUS.OK).json({message:WALLET_MESSAGES.FETCHED,walletDetails});
     } catch (error) {
         console.log("Error in fetching wallet details ..........",error);
-        return res.status(500).json({message:"Internal Server Error while fetching wallet details."});
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({message:WALLET_MESSAGES.FETCH_FAILED});
     }
 }
 

@@ -1,5 +1,7 @@
 const Wishlist = require('../models/wishlistSchema');
 const Product = require('../models/productSchema');
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { COMMON_MESSAGES, WISHLIST_MESSAGES } = require('../constants/messages');
 
 const addToWishlist = async (req, res) => {
     try {
@@ -8,18 +10,18 @@ const addToWishlist = async (req, res) => {
 
         // Validate required fields
         if (!productId || !variantId) {
-            return res.status(400).json({
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({
                 success: false,
-                message: "Missing required fields: productId and variantId are required"
+                message: WISHLIST_MESSAGES.PRODUCT_AND_VARIANT_REQUIRED
             });
         }
 
         // Find the product to verify it exists
         const product = await Product.findById(productId);
         if (!product) {
-            return res.status(404).json({ 
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ 
                 success: false,
-                message: "Product not found" 
+                message: COMMON_MESSAGES.PRODUCT_NOT_FOUND 
             });
         }
 
@@ -43,9 +45,9 @@ const addToWishlist = async (req, res) => {
             );
 
             if (productExists) {
-                return res.status(400).json({ 
+                return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
                     success: false,
-                    message: "This product variant is already in your wishlist"
+                    message: WISHLIST_MESSAGES.ALREADY_IN_WISHLIST
                 });
             }
 
@@ -63,17 +65,17 @@ const addToWishlist = async (req, res) => {
             .populate('product.productId')
             .populate('userId', 'name email');
 
-        return res.status(200).json({
+        return res.status(HTTP_STATUS.OK).json({
             success: true,
-            message: "Product added to wishlist successfully!",
+            message: WISHLIST_MESSAGES.ADDED,
             wishlist: populatedWishlist
         });
 
     } catch (error) {
         console.error("Error in addToWishlist:", error);
-        return res.status(500).json({
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
             success: false,
-            message: "Internal server error while adding product to wishlist"
+            message: WISHLIST_MESSAGES.ADD_FAILED
         });
     }
 };
@@ -84,18 +86,18 @@ const removeFromWishlist = async (req, res) => {
         const { productId, variantId } = req.body;
 
         if (!productId || !variantId) {
-            return res.status(400).json({
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({
                 success: false,
-                message: "Missing required fields: productId and variantId are required"
+                message: WISHLIST_MESSAGES.PRODUCT_AND_VARIANT_REQUIRED
             });
         }
 
         const wishlist = await Wishlist.findOne({ userId });
 
         if (!wishlist) {
-            return res.status(404).json({ 
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ 
                 success: false,
-                message: "Wishlist not found" 
+                message: WISHLIST_MESSAGES.NOT_FOUND 
             });
         }
 
@@ -112,17 +114,17 @@ const removeFromWishlist = async (req, res) => {
             .populate('product.productId')
             .populate('userId', 'name email');
 
-        return res.status(200).json({
+        return res.status(HTTP_STATUS.OK).json({
             success: true,
-            message: "Product removed from wishlist successfully!",
+            message: WISHLIST_MESSAGES.REMOVED,
             wishlist: populatedWishlist
         });
 
     } catch (error) {
         console.error("Error in removeFromWishlist:", error);
-        return res.status(500).json({
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
             success: false,
-            message: "Internal server error while removing product from wishlist"
+            message: WISHLIST_MESSAGES.REMOVE_FAILED
         });
     }
 };
@@ -136,24 +138,24 @@ const getWishlist = async (req, res) => {
             .populate('userId', 'name email');
 
         if (!wishlist) {
-            return res.status(200).json({
+            return res.status(HTTP_STATUS.OK).json({
                 success: true,
-                message: "No wishlist found for this user",
+                message: WISHLIST_MESSAGES.NO_WISHLIST,
                 wishlist: { product: [] }
             });
         }
 
-        return res.status(200).json({
+        return res.status(HTTP_STATUS.OK).json({
             success: true,
-            message: "Wishlist fetched successfully",
+            message: WISHLIST_MESSAGES.FETCHED,
             wishlist
         });
 
     } catch (error) {
         console.error("Error in getWishlist:", error);
-        return res.status(500).json({
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
             success: false,
-            message: "Internal server error while fetching wishlist"
+            message: WISHLIST_MESSAGES.FETCH_FAILED
         });
     }
 };

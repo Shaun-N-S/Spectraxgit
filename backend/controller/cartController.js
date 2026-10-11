@@ -1,6 +1,8 @@
 const Cart = require('../models/CartSchema');
 const User = require('../models/userModel');
 const Product = require('../models/productSchema')
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { COMMON_MESSAGES, CART_MESSAGES } = require('../constants/messages');
 
 
 const AddCart = async (req, res) => {
@@ -13,13 +15,13 @@ const AddCart = async (req, res) => {
         // Validate user
         const userData = await User.findById(userId);
         if (!userData) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: COMMON_MESSAGES.USER_NOT_FOUND });
         }
 
         // Validate product
         const productData = await Product.findById(productId);
         if (!productData) {
-            return res.status(404).json({ message: "Product not found" });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: COMMON_MESSAGES.PRODUCT_NOT_FOUND });
         }
 
         // Validate variant within product
@@ -28,12 +30,12 @@ const AddCart = async (req, res) => {
         );
 
         if (!variant) {
-            return res.status(404).json({ message: "Variant not found in product" });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: CART_MESSAGES.VARIANT_NOT_FOUND });
         }
 
         // Validate available quantity
         if (variant.availableQuantity < quantity) {
-            return res.status(400).json({ message: "Insufficient stock for this variant" });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: CART_MESSAGES.INSUFFICIENT_STOCK });
         }
 
         // Check if the user already has a cart
@@ -72,10 +74,10 @@ const AddCart = async (req, res) => {
         // Save the cart
         await cart.save();
 
-        return res.status(200).json({ message: "Product added to cart successfully", cart });
+        return res.status(HTTP_STATUS.OK).json({ message: CART_MESSAGES.ITEM_ADDED, cart });
     } catch (error) {
         console.error("Error in AddCart:", error);
-        return res.status(500).json({ message: "Internal server error" });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
     }
 };
 
@@ -90,11 +92,11 @@ const CartDetails = async (req, res) => {
         
 
         // Send success response with cart data
-        return res.status(200).json({ message: "Cart data retrieved successfully.", data: cartData });
+        return res.status(HTTP_STATUS.OK).json({ message: CART_MESSAGES.CART_FETCHED, data: cartData });
         
     } catch (error) {
         console.error("Error in CartDetails:", error);
-        return res.status(500).json({ message: "Internal server error." });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_WITH_PERIOD });
     }
 };
 
@@ -105,26 +107,26 @@ const UpdateQuantity = async (req, res) => {
 
         // Validate inputs
         if (!itemId || quantity === undefined) {
-            return res.status(400).json({ message: "itemId and quantity are required." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: CART_MESSAGES.ITEM_ID_AND_QUANTITY_REQUIRED });
         }
 
         // Validate quantity (e.g., it should be a positive integer)
         if (quantity < 1) {
-            return res.status(400).json({ message: "Quantity must be at least 1." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: CART_MESSAGES.MIN_QUANTITY });
         }
 
         // Find the user's cart
         const cart = await Cart.findOne({ userId });
 
         if (!cart) {
-            return res.status(404).json({ message: "Cart not found." });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: CART_MESSAGES.CART_NOT_FOUND });
         }
 
         // Find the item in the cart and update the quantity
         const item = cart.items.find(item => item._id.toString() === itemId);
 
         if (!item) {
-            return res.status(404).json({ message: "Item not found in cart." });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: CART_MESSAGES.ITEM_NOT_FOUND });
         }
 
         item.quantity = quantity; // Update the quantity
@@ -132,11 +134,11 @@ const UpdateQuantity = async (req, res) => {
         // Save the updated cart
         await cart.save();
 
-        return res.status(200).json({ message: "Item quantity updated successfully.", data: cart });
+        return res.status(HTTP_STATUS.OK).json({ message: CART_MESSAGES.QUANTITY_UPDATED, data: cart });
 
     } catch (error) {
         console.error("Error in updating quantity:", error);
-        return res.status(500).json({ message: "Internal server error." });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_WITH_PERIOD });
     }
 };
 
@@ -147,21 +149,21 @@ const RemoveItem = async (req, res) => {
 
         // Validate inputs
         if (!itemId) {
-            return res.status(400).json({ message: "itemId is required." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: CART_MESSAGES.ITEM_ID_REQUIRED });
         }
 
         // Find the user's cart
         const cart = await Cart.findOne({ userId });
 
         if (!cart) {
-            return res.status(404).json({ message: "Cart not found." });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: CART_MESSAGES.CART_NOT_FOUND });
         }
 
         // Check if the item exists in the cart
         const itemIndex = cart.items.findIndex(item => item._id.toString() === itemId);
 
         if (itemIndex === -1) {
-            return res.status(404).json({ message: "Item not found in cart." });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: CART_MESSAGES.ITEM_NOT_FOUND });
         }
 
         // Remove the item from the cart
@@ -170,11 +172,11 @@ const RemoveItem = async (req, res) => {
         // Save the updated cart
         await cart.save();
 
-        return res.status(200).json({ message: "Item removed successfully.", data: cart });
+        return res.status(HTTP_STATUS.OK).json({ message: CART_MESSAGES.ITEM_REMOVED, data: cart });
 
     } catch (error) {
         console.error("Error in removing item:", error);
-        return res.status(500).json({ message: "Internal server error." });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_WITH_PERIOD });
     }
 };
 

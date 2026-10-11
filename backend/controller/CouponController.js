@@ -1,5 +1,8 @@
 const Coupon = require('../models/CouponSchema');
 const User = require('../models/userModel');
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { COMMON_MESSAGES, COUPON_MESSAGES } = require('../constants/messages');
+
 const addCoupon = async (req, res) => {
     try {
         const { couponCode, couponType, description, discountValue, minimumPrice, expireDate } = req.body;
@@ -7,7 +10,7 @@ const addCoupon = async (req, res) => {
         // Check if the coupon already exists
         const existingCoupon = await Coupon.findOne({ name: couponCode });
         if (existingCoupon) {
-            return res.status(400).json({ message: 'This coupon already exists' });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COUPON_MESSAGES.ALREADY_EXISTS });
         }
 
         // Create a new coupon
@@ -23,14 +26,14 @@ const addCoupon = async (req, res) => {
         // Save the coupon to the database
         await newCoupon.save();
 
-        return res.status(201).json({
-            message: "Coupon created successfully",
+        return res.status(HTTP_STATUS.CREATED).json({
+            message: COUPON_MESSAGES.CREATED,
             coupon: newCoupon,
         });
     } catch (error) {
         console.error('Error while creating coupon:', error);
-        return res.status(500).json({
-            message: "An error occurred while creating the coupon",
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+            message: COUPON_MESSAGES.CREATE_FAILED,
             error: error.message,
         });
     }
@@ -43,14 +46,14 @@ const allCoupons = async (req,res)=>{
         const couponData = await Coupon.find({isListed:"active"});
 
         if(!couponData){
-            return res.status(404).json({message:"Coupon not found."})
+            return res.status(HTTP_STATUS.NOT_FOUND).json({message:COUPON_MESSAGES.NOT_FOUND})
         }
 
-        return res.status(200).json({message:"Coupon fetched successfully !",couponData})
+        return res.status(HTTP_STATUS.OK).json({message:COUPON_MESSAGES.FETCHED,couponData})
 
     } catch (error) {
        console.error("Error in fetching all coupons .",error);
-       return res.status(500).json({message:"Internal server error",error}) 
+       return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({message:COMMON_MESSAGES.INTERNAL_SERVER_ERROR,error}) 
     }
 }
 
@@ -63,7 +66,7 @@ const updateCoupon = async (req, res) => {
         console.log("Received Update Request Body:", req.body);
 
         if (!id) {
-            return res.status(400).json({ message: "ID is required to update the coupon." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COUPON_MESSAGES.ID_REQUIRED_FOR_UPDATE });
         }
 
         const updatedCoupon = await Coupon.findByIdAndUpdate(
@@ -73,16 +76,16 @@ const updateCoupon = async (req, res) => {
         );
 
         if (!updatedCoupon) {
-            return res.status(404).json({ message: "Coupon not found." });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: COUPON_MESSAGES.NOT_FOUND });
         }
 
-        return res.status(200).json({
-            message: "Coupon updated successfully!",
+        return res.status(HTTP_STATUS.OK).json({
+            message: COUPON_MESSAGES.UPDATED,
             coupon: updatedCoupon,
         });
     } catch (error) {
         console.error("Error updating coupon:", error);
-        return res.status(500).json({ message: "Internal server error." });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_WITH_PERIOD });
     }
 };
 
@@ -96,7 +99,7 @@ const removeCoupon = async (req, res) => {
         const { id } = req.body;
 
         if (!id) {
-            return res.status(400).json({ message: 'Coupon ID is required for removing the coupon.' });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COUPON_MESSAGES.ID_REQUIRED_FOR_REMOVE });
         }
 
         // Update the isListed field to "blocked"
@@ -107,17 +110,17 @@ const removeCoupon = async (req, res) => {
         );
 
         if (!updatedCoupon) {
-            return res.status(404).json({ message: 'Coupon not found.' });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: COUPON_MESSAGES.NOT_FOUND });
         }
 
-        return res.status(200).json({
-            message: 'Coupon status updated to blocked successfully.',
+        return res.status(HTTP_STATUS.OK).json({
+            message: COUPON_MESSAGES.BLOCKED,
             coupon: updatedCoupon
         });
 
     } catch (error) {
         console.error("Error in removing coupon:", error);
-        return res.status(500).json({ message: "Internal server error" });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
     }
 };
 
@@ -127,7 +130,7 @@ const validateCoupon = async (req, res) => {
         const { couponCode, totalAmount } = req.body;
 
         if (typeof couponCode !== "string" || !couponCode.trim()) {
-            return res.status(400).json({ message: "Invalid coupon code" });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COUPON_MESSAGES.INVALID_CODE });
         }
 
         // Find the coupon
@@ -138,31 +141,31 @@ const validateCoupon = async (req, res) => {
         });
 
         if (!coupon) {
-            return res.status(400).json({
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({
                 valid: false,
-                message: "Invalid or expired coupon code"
+                message: COUPON_MESSAGES.INVALID_OR_EXPIRED
             });
         }
 
         // Check minimum price requirement
         if (totalAmount < coupon.minimumPrice) {
-            return res.status(400).json({
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({
                 valid: false,
-                message: `Minimum purchase amount of ₹${coupon.minimumPrice} required for this coupon`
+                message: COUPON_MESSAGES.minimumPurchaseRequired(coupon.minimumPrice)
             });
         }
 
-        return res.status(200).json({
+        return res.status(HTTP_STATUS.OK).json({
             valid: true,
-            message: "Coupon applied successfully",
+            message: COUPON_MESSAGES.APPLIED,
             coupon: coupon
         });
 
     } catch (error) {
         console.error('Error validating coupon:', error);
-        return res.status(500).json({
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
             valid: false,
-            message: "An error occurred while validating the coupon"
+            message: COUPON_MESSAGES.VALIDATE_FAILED
         });
     }
 };

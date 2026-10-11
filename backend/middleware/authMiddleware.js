@@ -1,12 +1,14 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/userModel');
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { COMMON_MESSAGES, AUTH_MESSAGES } = require('../constants/messages');
 
 const verifyAccessToken = async (req, res, next) => {
   // Check both cookies and Authorization header
   const token = req.cookies?.accessToken || req.headers.authorization?.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ message: 'Access token is missing' });
+    return res.status(HTTP_STATUS.UNAUTHORIZED).json({ message: AUTH_MESSAGES.ACCESS_TOKEN_MISSING });
   }
 
   try {
@@ -17,15 +19,15 @@ const verifyAccessToken = async (req, res, next) => {
     
     // Check if user exists
     if (!user) {
-      return res.status(404).json({ 
-        message: 'User not found' 
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ 
+        message: COMMON_MESSAGES.USER_NOT_FOUND 
       });
     }
 
     // Check user status
     if (user.status === 'blocked') {
-      return res.status(403).json({ 
-        message: 'Account is not active. Please contact support.' 
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ 
+        message: AUTH_MESSAGES.ACCOUNT_NOT_ACTIVE 
       });
     }
 
@@ -36,7 +38,7 @@ const verifyAccessToken = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('Access token error:', error);
-    res.status(401).json({ message: 'Invalid or expired access token' });
+    res.status(HTTP_STATUS.UNAUTHORIZED).json({ message: AUTH_MESSAGES.INVALID_ACCESS_TOKEN });
   }
 };
 

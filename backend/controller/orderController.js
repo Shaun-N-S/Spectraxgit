@@ -8,6 +8,8 @@ const razorpay = require('../config/razorpayConfig');
 const Razorpay = require('razorpay'); // class itself, for the static validateWebhookSignature utility (B5)
 const Wallet = require('../models/walletSchema');
 const crypto = require('crypto');
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { COMMON_MESSAGES, COUPON_MESSAGES, ORDER_MESSAGES, RETURN_MESSAGES, PAYMENT_MESSAGES, WALLET_MESSAGES } = require('../constants/messages');
 
 // Validates the shape of every product line-item in an order payload, and
 // normalizes quantity/price to real numbers in place (a numeric-looking
@@ -17,27 +19,27 @@ const crypto = require('crypto');
 // Prevents malformed items from reaching stock, wallet, or order-creation logic.
 const validateOrderProducts = (products) => {
     if (!Array.isArray(products) || products.length === 0) {
-        return "At least one product is required.";
+        return ORDER_MESSAGES.PRODUCTS_REQUIRED;
     }
 
     for (const item of products) {
         if (!item || typeof item !== 'object') {
-            return "Each product item must be a valid object.";
+            return ORDER_MESSAGES.INVALID_PRODUCT_ITEM;
         }
         if (!item.productId) {
-            return "productId is required for every product item.";
+            return ORDER_MESSAGES.PRODUCT_ID_REQUIRED;
         }
         if (!item.variantId) {
-            return "variantId is required for every product item.";
+            return ORDER_MESSAGES.VARIANT_ID_REQUIRED;
         }
         if (item.quantity === undefined || item.quantity === null || isNaN(item.quantity) || Number(item.quantity) <= 0) {
-            return "A valid positive quantity is required for every product item.";
+            return ORDER_MESSAGES.INVALID_QUANTITY;
         }
         if (!item.variant || typeof item.variant !== 'object') {
-            return "Variant details are required for every product item.";
+            return ORDER_MESSAGES.VARIANT_DETAILS_REQUIRED;
         }
         if (item.variant.price === undefined || item.variant.price === null || isNaN(item.variant.price) || Number(item.variant.price) < 0) {
-            return "A valid variant price is required for every product item.";
+            return ORDER_MESSAGES.INVALID_VARIANT_PRICE;
         }
 
         item.quantity = Number(item.quantity);
@@ -83,7 +85,7 @@ const reserveStockForItems = async (products, session = null) => {
                     )
                 )
             );
-            return `Insufficient stock for product ${item.name}`;
+            return ORDER_MESSAGES.insufficientStockForProduct(item.name);
         }
 
         reservedItems.push(item);
@@ -151,15 +153,15 @@ const createRazorpayOrder = async (req, res) => {
 
         const order = await razorpay.orders.create(options);
         
-        res.status(200).json({
+        res.status(HTTP_STATUS.OK).json({
             success: true,
             order
         });
     } catch (error) {
         console.error("Razorpay order creation error:", error);
-        res.status(500).json({
+        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
             success: false,
-            error: "Payment initialization failed"
+            error: PAYMENT_MESSAGES.INITIALIZATION_FAILED
         });
     }
 };
@@ -183,9 +185,9 @@ const verifyRazorpayPayment = async (req, res) => {
         const isAuthentic = expectedSignature === razorpay_signature;
 
         if (!isAuthentic) {
-            return res.status(400).json({
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({
                 success: false,
-                error: "Payment verification failed"
+                error: PAYMENT_MESSAGES.VERIFICATION_FAILED
             });
         }
 
@@ -193,15 +195,15 @@ const verifyRazorpayPayment = async (req, res) => {
         // idempotent either way).
         await markRazorpayPaymentCompleted(razorpay_order_id, razorpay_payment_id, razorpay_signature);
 
-        res.status(200).json({
+        res.status(HTTP_STATUS.OK).json({
             success: true,
-            message: "Payment verified successfully"
+            message: PAYMENT_MESSAGES.VERIFIED
         });
     } catch (error) {
         console.error("Payment verification error:", error);
-        res.status(500).json({
+        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
             success: false,
-            error: "Payment verification failed"
+            error: PAYMENT_MESSAGES.VERIFICATION_FAILED
         });
     }
 };
@@ -221,7 +223,7 @@ const handleRazorpayWebhook = async (req, res) => {
         if (!signature || !process.env.RAZORPAY_WEBHOOK_SECRET) {
             // No signature header, or the server isn't configured with a
             // webhook secret — never process, never leak why to the caller.
-            return res.status(400).json({ status: "invalid" });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ status: "invalid" });
         }
 
         const isAuthentic = Razorpay.validateWebhookSignature(
@@ -232,7 +234,7 @@ const handleRazorpayWebhook = async (req, res) => {
 
         if (!isAuthentic) {
             console.error("Razorpay webhook: signature verification failed");
-            return res.status(400).json({ status: "invalid signature" });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ status: "invalid signature" });
         }
 
         const event = JSON.parse(rawBody.toString());
@@ -266,13 +268,13 @@ const handleRazorpayWebhook = async (req, res) => {
         // Always acknowledge receipt with 200 once the signature is valid, so
         // Razorpay doesn't keep retrying an event we've already handled (or
         // deliberately ignored because it isn't payment.captured).
-        return res.status(200).json({ status: "ok" });
+        return res.status(HTTP_STATUS.OK).json({ status: "ok" });
     } catch (error) {
         console.error("Razorpay webhook processing error:", error.message);
         // Still acknowledge — a malformed-but-authentically-signed payload
         // retrying indefinitely helps no one; the error above is what an
         // operator would search logs for.
-        return res.status(200).json({ status: "error acknowledged" });
+        return res.status(HTTP_STATUS.OK).json({ status: "error acknowledged" });
     }
 };
 
@@ -298,12 +300,12 @@ const placeOrder = async (req, res) => {
         } = req.body;
 
         if (!products || !products.length || !shippingAddress || !paymentMethod) {
-            return res.status(400).json({ message: "All fields are required." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COMMON_MESSAGES.ALL_FIELDS_REQUIRED_WITH_PERIOD });
         }
 
         const productValidationError = validateOrderProducts(products);
         if (productValidationError) {
-            return res.status(400).json({ message: productValidationError });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: productValidationError });
         }
 
         let appliedCoupon = null;
@@ -311,7 +313,7 @@ const placeOrder = async (req, res) => {
 
         if (couponCode) {
             if (typeof couponCode !== "string" || !couponCode.trim()) {
-                return res.status(400).json({ message: "Invalid coupon code" });
+                return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COUPON_MESSAGES.INVALID_CODE });
             }
 
             appliedCoupon = await Coupon.findOne({
@@ -397,20 +399,20 @@ const placeOrder = async (req, res) => {
             }
         });
 
-        return res.status(201).json({
+        return res.status(HTTP_STATUS.CREATED).json({
             message: isPaymentFailedOrder
-                ? "Order created with payment failure"
-                : "Order placed successfully.",
+                ? ORDER_MESSAGES.CREATED_WITH_PAYMENT_FAILURE
+                : ORDER_MESSAGES.PLACED,
             order: newOrder
         });
 
     } catch (error) {
         if (businessError) {
-            return res.status(400).json({ message: businessError });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: businessError });
         }
         console.error("Error placing order:", error);
-        return res.status(500).json({
-            message: "Failed to place order",
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+            message: ORDER_MESSAGES.PLACE_FAILED,
             error: error.message
         });
     } finally {
@@ -434,12 +436,12 @@ const placeWalletOrder = async (req, res) => {
         const { products, shippingAddress, couponCode, totalAmount, finalAmount } = req.body;
 
         if (!products || !products.length || !shippingAddress) {
-            return res.status(400).json({ message: "All fields are required." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COMMON_MESSAGES.ALL_FIELDS_REQUIRED_WITH_PERIOD });
         }
 
         const productValidationError = validateOrderProducts(products);
         if (productValidationError) {
-            return res.status(400).json({ message: productValidationError });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: productValidationError });
         }
 
         let appliedCoupon = null;
@@ -447,7 +449,7 @@ const placeWalletOrder = async (req, res) => {
 
         if (couponCode) {
             if (typeof couponCode !== "string" || !couponCode.trim()) {
-                return res.status(400).json({ message: "Invalid coupon code" });
+                return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COUPON_MESSAGES.INVALID_CODE });
             }
 
             appliedCoupon = await Coupon.findOne({
@@ -499,7 +501,7 @@ const placeWalletOrder = async (req, res) => {
             );
 
             if (!updatedWallet) {
-                businessError = "Insufficient wallet balance.";
+                businessError = WALLET_MESSAGES.INSUFFICIENT_BALANCE;
                 throw new Error(businessError);
             }
 
@@ -541,17 +543,17 @@ const placeWalletOrder = async (req, res) => {
             );
         });
 
-        return res.status(201).json({
-            message: "Order placed successfully using wallet.",
+        return res.status(HTTP_STATUS.CREATED).json({
+            message: ORDER_MESSAGES.PLACED_WITH_WALLET,
             orderId: newOrder._id
         });
 
     } catch (error) {
         if (businessError) {
-            return res.status(400).json({ message: businessError });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: businessError });
         }
         console.error("Error placing order with wallet payment:", error);
-        return res.status(500).json({ message: "Failed to place order", error: error.message });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: ORDER_MESSAGES.PLACE_FAILED, error: error.message });
     } finally {
         if (session) {
             await session.endSession();
@@ -572,20 +574,20 @@ const fetchOrders = async (req, res) => {
         // Check if user exists
         const user = await User.findById(userId);
         if (!user) {
-            return res.status(404).json({ message: "User not found." });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: COMMON_MESSAGES.USER_NOT_FOUND_WITH_PERIOD });
         }
 
         // Fetch orders for the user
         const orderDetails = await Order.find({ userId }).sort({ orderDate: -1 });
 
-        return res.status(200).json({
-            message: "Order details fetched successfully!",
+        return res.status(HTTP_STATUS.OK).json({
+            message: ORDER_MESSAGES.USER_ORDERS_FETCHED,
             orderDetails,
         });
 
     } catch (error) {
         console.error("Error in fetching order:", error);
-        return res.status(500).json({ message: "Error in fetching order." });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: ORDER_MESSAGES.USER_ORDERS_FETCH_FAILED });
     }
 };
 
@@ -596,24 +598,24 @@ const orderById = async (req, res) => {
         const userId = req.user.id;
 
         if (!id) {
-            return res.status(400).json({ message: "Order ID is required." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: ORDER_MESSAGES.ID_REQUIRED });
         }
 
         const orderDetails = await Order.findOne({ _id: id, userId });
 
         if (!orderDetails) {
-            return res.status(404).json({ message: "Order not found." });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: ORDER_MESSAGES.NOT_FOUND_WITH_PERIOD });
         }
 
-        return res.status(200).json({
-            message: "Order details fetched successfully.",
+        return res.status(HTTP_STATUS.OK).json({
+            message: ORDER_MESSAGES.DETAILS_FETCHED,
             orderDetails,
         });
 
     } catch (error) {
         console.error("Error fetching order by ID:", error);
-        return res.status(500).json({
-            message: "An error occurred while fetching order details.",
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+            message: ORDER_MESSAGES.DETAILS_FETCH_FAILED,
             error: error.message,
         });
     }
@@ -627,30 +629,30 @@ const returnOrderStatusUpdate = async (req, res) => {
 
         // Basic validation
         if (!status) {
-            return res.status(400).json({ message: "Status is required" });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: ORDER_MESSAGES.STATUS_REQUIRED });
         }
 
         // Find order and verify ownership
         const orderDetails = await Order.findOne({ _id: id, userId });
         if (!orderDetails) {
-            return res.status(404).json({ message: "Order not found" });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: ORDER_MESSAGES.NOT_FOUND });
         }
 
         // Validate return request
         if (status !== 'Returned') {
-            return res.status(400).json({ message: "Invalid status for return order" });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: RETURN_MESSAGES.INVALID_STATUS });
         }
 
         if (!returnReason || !returnDescription) {
-            return res.status(400).json({
-                message: "Return reason and description are required"
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({
+                message: RETURN_MESSAGES.REASON_AND_DESCRIPTION_REQUIRED
             });
         }
 
         // Validate order status
         if (orderDetails.orderStatus !== 'Delivered') {
-            return res.status(400).json({
-                message: "Only delivered orders can be returned"
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({
+                message: RETURN_MESSAGES.ONLY_DELIVERED_RETURNABLE
             });
         }
 
@@ -670,8 +672,8 @@ const returnOrderStatusUpdate = async (req, res) => {
                 orderDetails.orderStatus = status;
                 const updatedOrder = await orderDetails.save();
 
-                return res.status(200).json({
-                    message: "Return processed successfully",
+                return res.status(HTTP_STATUS.OK).json({
+                    message: RETURN_MESSAGES.PROCESSED,
                     order: updatedOrder,
                     wallet: {
                         currentBalance: wallet.balance,
@@ -680,8 +682,8 @@ const returnOrderStatusUpdate = async (req, res) => {
                 });
             } catch (refundError) {
                 console.error("Refund processing failed:", refundError);
-                return res.status(500).json({
-                    message: "Failed to process refund",
+                return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+                    message: RETURN_MESSAGES.REFUND_FAILED,
                     error: refundError.message
                 });
             }
@@ -691,15 +693,15 @@ const returnOrderStatusUpdate = async (req, res) => {
         orderDetails.orderStatus = status;
         const updatedOrder = await orderDetails.save();
 
-        return res.status(200).json({
-            message: "Return processed successfully",
+        return res.status(HTTP_STATUS.OK).json({
+            message: RETURN_MESSAGES.PROCESSED,
             order: updatedOrder
         });
 
     } catch (error) {
         console.error("Error processing return:", error);
-        return res.status(500).json({
-            message: "Error processing return order",
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+            message: RETURN_MESSAGES.PROCESS_FAILED,
             error: error.message
         });
     }
@@ -712,13 +714,13 @@ const orderStatusUpdate = async (req, res) => {
         const { status } = req.body;
 
         if (!status) {
-            return res.status(400).json({ message: "Status is required" });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: ORDER_MESSAGES.STATUS_REQUIRED });
         }
 
         const orderDetails = await Order.findById(id);
 
         if (!orderDetails) {
-            return res.status(404).json({ message: "Order not found" });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: ORDER_MESSAGES.NOT_FOUND });
         }
 
         // This route is shared by the admin panel (verifyAdmin -> req.user = full admin doc)
@@ -726,11 +728,11 @@ const orderStatusUpdate = async (req, res) => {
         // Only enforce ownership for non-admin callers so admin behavior is unchanged.
         const isAdminCaller = req.user?.isAdmin === true;
         if (!isAdminCaller && orderDetails.userId.toString() !== req.user.id) {
-            return res.status(404).json({ message: "Order not found" });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: ORDER_MESSAGES.NOT_FOUND });
         }
 
         if (!['Processing', 'Confirmed', 'Shipped', 'Delivered', 'Cancelled', 'Returned'].includes(status)) {
-            return res.status(400).json({ message: "Invalid order status" });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: ORDER_MESSAGES.INVALID_STATUS });
         }
 
         // Handle Cancellation
@@ -739,8 +741,8 @@ const orderStatusUpdate = async (req, res) => {
             // already-cancelled order, which would otherwise re-run stock
             // restoration and the refund below on every repeated call).
             if (orderDetails.orderStatus === 'Shipped' || orderDetails.orderStatus === 'Delivered' || orderDetails.orderStatus === 'Cancelled') {
-                return res.status(400).json({
-                    message: `Cannot cancel the order with current status ${orderDetails.orderStatus}`,
+                return res.status(HTTP_STATUS.BAD_REQUEST).json({
+                    message: ORDER_MESSAGES.cannotCancelWithStatus(orderDetails.orderStatus),
                 });
             }
 
@@ -777,8 +779,8 @@ const orderStatusUpdate = async (req, res) => {
         // Handle Returns
         if (status === 'Returned') {
             if (orderDetails.orderStatus !== 'Delivered') {
-                return res.status(400).json({
-                    message: "Only delivered orders can be returned",
+                return res.status(HTTP_STATUS.BAD_REQUEST).json({
+                    message: RETURN_MESSAGES.ONLY_DELIVERED_RETURNABLE,
                 });
             }
 
@@ -832,7 +834,7 @@ const orderStatusUpdate = async (req, res) => {
         const updateOrder = await orderDetails.save();
 
         const responseData = {
-            message: "Order status updated successfully",
+            message: ORDER_MESSAGES.STATUS_UPDATED,
             updateOrder: updateOrder,
         };
 
@@ -847,10 +849,10 @@ const orderStatusUpdate = async (req, res) => {
             }
         }
 
-        return res.status(200).json(responseData);
+        return res.status(HTTP_STATUS.OK).json(responseData);
     } catch (error) {
         console.error("Error:", error);
-        return res.status(500).json({ message: "Error updating order status" });
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: ORDER_MESSAGES.STATUS_UPDATE_FAILED });
     }
 };
 
@@ -904,11 +906,11 @@ const getallorders = async (req,res) =>{
         ]);
 
         if(!orders){
-            return res.status(404).json({message:"Orders not found . "});
+            return res.status(HTTP_STATUS.NOT_FOUND).json({message:ORDER_MESSAGES.LIST_NOT_FOUND});
         };
 
-        return res.status(200).json({
-            message:"Orders found successfully . ",
+        return res.status(HTTP_STATUS.OK).json({
+            message:ORDER_MESSAGES.LIST_FOUND,
             orders,
             total,
             page,
@@ -919,7 +921,7 @@ const getallorders = async (req,res) =>{
         
     } catch (error) {
         console.log("Error in getting all orders . ",error);
-        return res.status(500).json({message:"Internal server error ."})
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({message:COMMON_MESSAGES.INTERNAL_SERVER_ERROR_WITH_SPACED_PERIOD})
     }
 }
 
@@ -932,20 +934,20 @@ const refundOrders = async (req, res) => {
 
         const order = await Order.findOne({ _id: orderId, userId });
         if (!order) {
-            return res.status(404).json({ message: "Order not found" });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: ORDER_MESSAGES.NOT_FOUND });
         }
 
         // Check if order is eligible for refund
         if (order.paymentMethod !== 'RazorpayX' || order.paymentStatus !== 'Completed') {
-            return res.status(400).json({ 
-                message: "Order is not eligible for refund. Only completed online payments can be refunded."
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+                message: RETURN_MESSAGES.NOT_REFUND_ELIGIBLE
             });
         }
 
         // Check if order status is cancelled
         if (order.orderStatus !== 'Cancelled') {
-            return res.status(400).json({ 
-                message: "Only cancelled orders can be refunded" 
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+                message: RETURN_MESSAGES.ONLY_CANCELLED_REFUNDABLE 
             });
         }
 
@@ -968,7 +970,7 @@ const refundOrders = async (req, res) => {
         );
 
         if (alreadyRefunded) {
-            return res.status(400).json({ message: "This order has already been refunded." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: RETURN_MESSAGES.ALREADY_REFUNDED });
         }
 
         wallet.balance += refundAmount;
@@ -983,8 +985,8 @@ const refundOrders = async (req, res) => {
 
         await wallet.save();
 
-        return res.status(200).json({
-            message: "Refund processed successfully!",
+        return res.status(HTTP_STATUS.OK).json({
+            message: RETURN_MESSAGES.REFUND_PROCESSED,
             wallet: {
                 balance: wallet.balance,
                 lastTransaction: wallet.transactions[wallet.transactions.length - 1]
@@ -993,8 +995,8 @@ const refundOrders = async (req, res) => {
 
     } catch (error) {
         console.error("Error in refunding order:", error);
-        return res.status(500).json({
-            message: "Error in processing refund, please try again later"
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+            message: RETURN_MESSAGES.REFUND_REQUEST_FAILED
         });
     }
 };
