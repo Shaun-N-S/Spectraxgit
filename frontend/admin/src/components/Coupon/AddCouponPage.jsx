@@ -1,4 +1,3 @@
-import React from 'react';
 import AdminSidebar from './AdminSidebar';
 import AddCoupon from './AddCoupon';
 

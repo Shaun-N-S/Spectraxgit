@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { ShoppingCart, Heart, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,16 +19,8 @@ export default function ProductDetail() {
   const [brand, setBrand] = useState("");
   const [zoomStyle, setZoomStyle] = useState({ display: "none" });
   const [selectedVariant, setSelectedVariant] = useState(null);
-  const [isInWishlist, setIsInWishlist] = useState(false);
-  const [offerData, setOfferData] = useState(null);
   const [productOffer, setProductOffer] = useState(null);
   const [categoryOffer, setCategoryOffer] = useState(null);
-  const [bestDiscount, setBestDiscount] = useState({
-    discountedPrice: 0,
-    originalPrice: 0,
-    savings: 0,
-    discountPercent: 0,
-  });
   const [wishlistMap, setWishlistMap] = useState({});
   const navigate = useNavigate();
 
@@ -38,6 +30,9 @@ export default function ProductDetail() {
   };
   const userId = getUserId(userDetails);
   const { id } = useParams();
+
+  // Latest fetchData for the effect below, which re-runs only when `id` changes.
+  const fetchDataRef = useRef(null);
 
   useEffect(() => {
     // Reset product-specific UI state before loading a different product, so
@@ -52,7 +47,7 @@ export default function ProductDetail() {
     setProductOffer(null);
     setCategoryOffer(null);
     setRelatedProducts([]);
-    fetchData();
+    fetchDataRef.current();
   }, [id]);
 
   const fetchData = async () => {
@@ -83,7 +78,6 @@ export default function ProductDetail() {
             newWishlistMap[item.productId._id] = true;
           });
           setWishlistMap(newWishlistMap);
-          setIsInWishlist(!!newWishlistMap[id]); // Update isInWishlist based on wishlistMap
         } catch (error) {
           console.error("Error fetching wishlist:", error);
         }
@@ -132,15 +126,6 @@ export default function ProductDetail() {
         }
       }
 
-      // Calculate best discount only if we have a valid variant
-      if (product.variants && product.variants.length > 0) {
-        calculateBestDiscount(
-          product.variants[0].price,
-          productOfferData,
-          categoryOfferData,
-        );
-      }
-
       // Fetch related products if category exists
       if (product.categoryId) {
         fetchRelatedProducts(product.categoryId);
@@ -153,59 +138,11 @@ export default function ProductDetail() {
       setLoading(false);
     }
   };
-
-  const calculateBestDiscount = (
-    originalPrice,
-    productOffer,
-    categoryOffer,
-  ) => {
-    let bestDiscountPercent = 0;
-    const currentDate = new Date();
-
-    // Check product offer
-    if (
-      productOffer &&
-      productOffer.isActive &&
-      new Date(productOffer.startDate) <= currentDate &&
-      new Date(productOffer.endDate) >= currentDate
-    ) {
-      bestDiscountPercent = Math.max(
-        bestDiscountPercent,
-        productOffer.discountPercent,
-      );
-    }
-
-    // Check category offer
-    if (
-      categoryOffer &&
-      categoryOffer.isActive &&
-      new Date(categoryOffer.startDate) <= currentDate &&
-      new Date(categoryOffer.endDate) >= currentDate
-    ) {
-      bestDiscountPercent = Math.max(
-        bestDiscountPercent,
-        categoryOffer.discountPercent,
-      );
-    }
-
-    const discountedPrice =
-      originalPrice - originalPrice * (bestDiscountPercent / 100);
-    const savings = originalPrice - discountedPrice;
-
-    setBestDiscount({
-      discountedPrice: discountedPrice,
-      originalPrice: originalPrice,
-      savings: savings,
-      discountPercent: bestDiscountPercent,
-    });
-  };
-
-  // Update discount calculation when variant changes
-  useEffect(() => {
-    if (selectedVariant && (productOffer || categoryOffer)) {
-      calculateBestDiscount(selectedVariant.price, productOffer, categoryOffer);
-    }
-  }, [selectedVariant, productOffer, categoryOffer]);
+  // Layout effects run before passive effects in every commit, so the
+  // effect above always calls this render's fetchData.
+  useLayoutEffect(() => {
+    fetchDataRef.current = fetchData;
+  });
 
   console.log(
     "offer ID .............................................",
@@ -247,7 +184,7 @@ export default function ProductDetail() {
     });
   };
 
-  const handleCart = async (userId, productId, variantId) => {
+  const handleCart = async (userId, productId) => {
     console.log("suer ID  ....", userId);
     if (!userId) {
       toast.error("Please login to add items to cart");
@@ -299,7 +236,6 @@ export default function ProductDetail() {
             delete newMap[id];
             return newMap;
           });
-          setIsInWishlist(false);
           toast.success("Removed from wishlist");
         }
       } else {
@@ -314,7 +250,6 @@ export default function ProductDetail() {
             ...prev,
             [id]: true,
           }));
-          setIsInWishlist(true);
           toast.success("Added to wishlist");
         }
       }

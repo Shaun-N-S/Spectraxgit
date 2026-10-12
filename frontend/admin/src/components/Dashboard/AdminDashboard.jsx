@@ -1,6 +1,4 @@
-import React, { useState } from "react"
 import { motion } from "framer-motion"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import SalesReport from "./SalesReport"
 import TopSellingItems from './TopSellingItems';
 
@@ -15,7 +13,6 @@ import TopSellingItems from './TopSellingItems';
 // ]
 
 const AdminDashboard = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-white">

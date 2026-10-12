@@ -20,6 +20,8 @@ export default function WishlistPage() {
   const [wishlistItems, setWishlistItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 5
 
  const userDetails = useSelector((state)=>state.user)
    const getUserId = (userDetails)=>{
@@ -32,7 +34,6 @@ export default function WishlistPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    const userId = getUserId(userDetails)
     const fetchWishlistData = async () => {
       try {
         setLoading(true)
@@ -68,6 +69,7 @@ export default function WishlistPage() {
 
         const activeItems = itemsWithDetails.filter(item => item !== null)
         setWishlistItems(activeItems)
+        setCurrentPage(1)
         
       } catch (err) {
         console.error('Wishlist fetch error:', err)
@@ -80,7 +82,7 @@ export default function WishlistPage() {
     if (userId) {
       fetchWishlistData()
     }
-  }, [])
+  }, [userId])
 
   console.log(wishlistItems)
 
@@ -89,7 +91,11 @@ const removeFromWishlist = async (productId, variantId) => {
   const userId = getUserId(userDetails);
   try {
     await axiosInstance.post('/remove/wishlist', { userId, productId, variantId });
-    setWishlistItems(wishlistItems.filter(item => item.productId !== productId));
+    const remainingItems = wishlistItems.filter(item => item.productId !== productId);
+    setWishlistItems(remainingItems);
+    // Removing the last item on the final page moves back to the last remaining page.
+    const remainingPages = Math.max(1, Math.ceil(remainingItems.length / itemsPerPage));
+    setCurrentPage((page) => Math.min(page, remainingPages));
     toast.success('Item removed from wishlist');
   } catch (err) {
     console.error('Remove item error:', err);
@@ -126,6 +132,11 @@ console.log("VariantId:", variantId);
 
 
 
+  const totalPages = Math.ceil(wishlistItems.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const currentItems = wishlistItems.slice(startIndex, endIndex)
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -154,7 +165,7 @@ console.log("VariantId:", variantId);
               <p className="text-center text-gray-300">Your wishlist is empty.</p>
             ) : (
               <div className="space-y-6">
-                {wishlistItems.map((item) => (
+                {currentItems.map((item) => (
                   <div key={item.id} className="flex items-center space-x-4 text-white">
                     <img src={item.image} alt={item.name} className="w-24 h-24 object-cover rounded-md" />
                     <div className="flex-1">
@@ -183,6 +194,26 @@ console.log("VariantId:", variantId);
 
                     </div>
                   </div>
+                ))}
+              </div>
+            )}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center mt-6 space-x-2">
+                {Array.from({ length: totalPages }, (_, index) => (
+                  <Button
+                    key={index + 1}
+                    variant={currentPage === index + 1 ? "default" : "outline"}
+                    onClick={() => setCurrentPage(index + 1)}
+                    className={`px-3 py-1 ${
+                      currentPage === index + 1
+                        ? "border border-transparent bg-green-500 text-black hover:bg-green-600"
+                        : "text-gray-600"
+                    }`}
+                  >
+                    {index + 1}
+                  </Button>
                 ))}
               </div>
             )}

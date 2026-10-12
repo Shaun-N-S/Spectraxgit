@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react"
+import { useState, useEffect, useLayoutEffect, useRef } from "react"
 import { format, subDays, subWeeks, subMonths, parseISO } from "date-fns"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -24,15 +23,19 @@ const SalesReport = () => {
   const [loading, setLoading] = useState(false)
   const [showDatePickers, setShowDatePickers] = useState(false)
 
+  // Latest values for the effects below, which keep their original triggers.
+  const fetchSalesDataRef = useRef(null)
+  const reportTypeRef = useRef(reportType)
+
   useEffect(() => {
     if (reportType !== "custom") {
-      fetchSalesData()
+      fetchSalesDataRef.current()
     }
   }, [reportType])
 
   useEffect(() => {
-    if (reportType === "custom") {
-      fetchSalesData()
+    if (reportTypeRef.current === "custom") {
+      fetchSalesDataRef.current()
     }
   }, [startDate, endDate])
 
@@ -73,6 +76,13 @@ const SalesReport = () => {
     }
   }
   
+
+  // Layout effects run before passive effects in every commit, so the
+  // effects above always see this render's values.
+  useLayoutEffect(() => {
+    fetchSalesDataRef.current = fetchSalesData
+    reportTypeRef.current = reportType
+  })
 
   const handleReportTypeChange = (value) => {
     setReportType(value)
@@ -146,7 +156,6 @@ const SalesReport = () => {
     
     // Create boxes for summary statistics
     const boxHeight = 25;
-    const boxSpacing = 50;
     
     // Helper function to draw a statistic box
     const drawStatBox = (title, value, x, y) => {

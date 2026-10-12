@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import PropTypes from 'prop-types';
 import {
   Dialog,
   DialogContent,
@@ -87,9 +88,16 @@ const ReturnDialog = ({ isOpen, onClose, onSubmit }) => {
 };
 
 
+ReturnDialog.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSubmit: PropTypes.func.isRequired,
+};
+
 const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
-  if (!order) return null;
+  // Hooks must run on every render, before the early return below.
   const [isReturnDialogOpen, setIsReturnDialogOpen] = useState(false);
+  if (!order) return null;
 
 
 
@@ -252,17 +260,6 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
       
       downloadInvoice(formattedOrder);
     }
-  };
-
-  // Helper function to safely display variant details
-  const renderVariantValue = (value) => {
-    if (!value) return '';
-    if (typeof value === 'string') return value;
-    if (typeof value === 'object') {
-      // If the value is an object with name or value property
-      return value.name || value.value || JSON.stringify(value);
-    }
-    return String(value);
   };
 
   // Calculate the subtotal
@@ -443,6 +440,43 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
       </DialogContent>
     </Dialog>
   );
+};
+
+OrderDetailsBox.propTypes = {
+  // null until the customer selects an order (the component renders nothing)
+  order: PropTypes.shape({
+    _id: PropTypes.string,
+    orderStatus: PropTypes.string,
+    orderDate: PropTypes.string,
+    createdAt: PropTypes.string,
+    paymentMethod: PropTypes.string,
+    totalAmount: PropTypes.number,
+    finalAmount: PropTypes.number,
+    customerName: PropTypes.string,
+    customerEmail: PropTypes.string,
+    products: PropTypes.arrayOf(
+      PropTypes.shape({
+        name: PropTypes.string,
+        quantity: PropTypes.number,
+        price: PropTypes.number,
+        variant: PropTypes.object,
+      })
+    ),
+    shippingAddress: PropTypes.shape({
+      address: PropTypes.string,
+      city: PropTypes.string,
+      state: PropTypes.string,
+      country: PropTypes.string,
+      pinCode: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    }),
+    coupon: PropTypes.shape({
+      code: PropTypes.string,
+      discountAmount: PropTypes.number,
+    }),
+  }),
+  open: PropTypes.bool.isRequired,
+  onOpenChange: PropTypes.func.isRequired,
+  onStatusUpdate: PropTypes.func.isRequired,
 };
 
 export default OrderDetailsBox;

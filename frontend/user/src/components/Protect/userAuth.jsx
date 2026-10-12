@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import PropTypes from 'prop-types';
 import { Navigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import axiosInstance from '../../axios/userAxios'; // Ensure this points to your Axios setup
@@ -28,7 +29,7 @@ function ProtectEdit({ children }) {
         }
 
         setIsAuthenticated(true);
-      } catch (error) {
+      } catch {
         setIsAuthenticated(false);
       }
     };
@@ -43,5 +44,9 @@ function ProtectEdit({ children }) {
 
   return isAuthenticated ? <Navigate to="/home" /> : children;
 }
+
+ProtectEdit.propTypes = {
+  children: PropTypes.node.isRequired,
+};
 
 export default ProtectEdit;

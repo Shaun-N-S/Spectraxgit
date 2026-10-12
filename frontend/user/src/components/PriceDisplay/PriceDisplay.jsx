@@ -1,4 +1,4 @@
-import React from "react"
+import PropTypes from "prop-types"
 import { Badge } from "@/components/ui/badge"
 
 const PriceDisplay = ({ originalPrice, productOffer, categoryOffer, className = "", showSavingsBadge = true }) => {
@@ -58,6 +58,21 @@ const PriceDisplay = ({ originalPrice, productOffer, categoryOffer, className = 
       )}
     </div>
   )
+}
+
+const offerShape = PropTypes.shape({
+  isActive: PropTypes.bool,
+  startDate: PropTypes.oneOfType([PropTypes.string, PropTypes.instanceOf(Date)]),
+  endDate: PropTypes.oneOfType([PropTypes.string, PropTypes.instanceOf(Date)]),
+  discountPercent: PropTypes.number,
+})
+
+PriceDisplay.propTypes = {
+  originalPrice: PropTypes.number.isRequired,
+  productOffer: offerShape,
+  categoryOffer: offerShape,
+  className: PropTypes.string,
+  showSavingsBadge: PropTypes.bool,
 }
 
 export default PriceDisplay

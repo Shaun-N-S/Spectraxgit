@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
   PieChart,
@@ -84,7 +85,7 @@ const ChartCard = ({ title, icon: Icon, data }) => {
                 layout="vertical" 
                 align="right"
                 verticalAlign="middle"
-                formatter={(value, entry) => {
+                formatter={(value) => {
                   const item = chartData.find(d => d.name === value);
                   return `${value} (${item.totalQuantity})`;
                 }}
@@ -119,6 +120,30 @@ const ChartCard = ({ title, icon: Icon, data }) => {
       </CardContent>
     </Card>
   );
+};
+
+CustomTooltip.propTypes = {
+  active: PropTypes.bool,
+  payload: PropTypes.arrayOf(
+    PropTypes.shape({
+      payload: PropTypes.shape({
+        name: PropTypes.string,
+        totalQuantity: PropTypes.number,
+        percentage: PropTypes.number,
+      }),
+    })
+  ),
+};
+
+ChartCard.propTypes = {
+  title: PropTypes.string.isRequired,
+  icon: PropTypes.elementType.isRequired,
+  // Analytics rows (product/category/brand name + quantity); may be empty
+  data: PropTypes.arrayOf(
+    PropTypes.shape({
+      totalQuantity: PropTypes.number,
+    })
+  ),
 };
 
 export default function TopSellingItems() {

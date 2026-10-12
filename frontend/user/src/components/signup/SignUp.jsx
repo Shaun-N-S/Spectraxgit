@@ -1,7 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
-import { addUser } from '@/redux/userSlice';
 import axiosInstance from '@/axios/userAxios';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -11,7 +9,6 @@ import toast from 'react-hot-toast';
 
 const SignUp = () => {
   const navigate = useNavigate();
-  const dispatch = useDispatch();
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -74,7 +71,7 @@ const SignUp = () => {
     if (validateForm()) {
       setLoading(true);
       try {
-        const response = await axiosInstance.post('/sign', formData);
+        await axiosInstance.post('/sign', formData);
         console.log(formData)
         // dispatch(addUser(response.data.user));
         localStorage.setItem('user', JSON.stringify(formData));

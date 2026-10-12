@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Link, useNavigate } from "react-router-dom";
@@ -131,7 +131,7 @@ const Login = () => {
         </form>
 
         <p className="mt-6 text-center text-gray-400 text-sm">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link to="/signup" className="text-[#00cc00] hover:underline">
             Sign Up
           </Link>

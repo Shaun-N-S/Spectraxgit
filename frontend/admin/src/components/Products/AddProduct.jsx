@@ -1,10 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axiosInstance from '@/axios/adminAxios';
 // import { toast } from 'react-toastify';
 import {toast} from 'react-hot-toast';
 import cloudAxios from 'axios';
 import Cropper from 'react-easy-crop';
 import { useNavigate } from 'react-router-dom';
+import {
+  getPriceError,
+  getQuantityError,
+  getSpecificationError,
+  hasVariantErrors,
+  validateSpecifications,
+  validateVariants,
+} from './productValidation';
 
 const AddProduct = () => {
 
@@ -19,7 +27,7 @@ const AddProduct = () => {
   const [productImages, setProductImages] = useState([]);
   const [categoryId, setCategoryId] = useState('');
   const [brandId, setBrandId] = useState('');
-  const [status, setStatus] = useState('active');
+  const [status] = useState('active');
   const [variants, setVariants] = useState([{ 
     attributes: [], 
     sku: '', 
@@ -27,6 +35,7 @@ const AddProduct = () => {
     availableQuantity: '',
     specifications: {}
   }]);
+  const [variantErrors, setVariantErrors] = useState([]);
   const [variantAttributes, setVariantAttributes] = useState([
     { attribute: '', values: [''] }
   ]);
@@ -193,6 +202,12 @@ const AddProduct = () => {
       }
       return updatedVariants;
     });
+    setVariantErrors((prev) => {
+      if (!prev[index]) return prev;
+      const updated = [...prev];
+      updated[index] = validateVariants([{ ...variants[index], [field]: value }])[0];
+      return updated;
+    });
   };
 
   const handleAttributeChange = (index, value) => {
@@ -302,35 +317,9 @@ const AddProduct = () => {
       ...prev,
       specifications: {
         ...prev.specifications,
-        [key]: value.length < 2 ? `${key.charAt(0).toUpperCase() + key.slice(1)} must be at least 2 characters` : ''
+        [key]: getSpecificationError(key, value)
       }
     }));
-  };
-
-  const validateSpecifications = (specs) => {
-    const newErrors = {};
-    if (!specs.model || specs.model.length < 2) {
-      newErrors.model = 'Model must be at least 2 characters';
-    }
-    if (!specs.series || specs.series.length < 2) {
-      newErrors.series = 'Series must be at least 2 characters';
-    }
-    if (!specs.warranty) {
-      newErrors.warranty = 'Warranty is required';
-    }
-    if (!specs.manufacturer || specs.manufacturer.length < 2) {
-      newErrors.manufacturer = 'Manufacturer must be at least 2 characters';
-    }
-    if (!specs.itemWeight) {
-      newErrors.itemWeight = 'Item weight is required';
-    }
-    if (!specs.dimensions) {
-      newErrors.dimensions = 'Dimensions are required';
-    }
-    if (!specs.countryOfOrigin || specs.countryOfOrigin.length < 2) {
-      newErrors.countryOfOrigin = 'Country of origin must be at least 2 characters';
-    }
-    return newErrors;
   };
 
   const handleSubmit = async (e) => {
@@ -350,14 +339,20 @@ const AddProduct = () => {
       images: productImages.length === 0 ? 'Please add at least one product image' : '',
       specifications: specErrors
     };
+    const newVariantErrors = validateVariants(variants);
 
-    
+    setErrors(newErrors);
+    setVariantErrors(newVariantErrors);
+
+    const hasFieldErrors = Object.entries(newErrors).some(([key, value]) =>
+      key === 'specifications' ? Object.keys(value).length > 0 : Boolean(value)
+    );
+    if (hasFieldErrors || hasVariantErrors(newVariantErrors)) {
+      toast.error('Please fix the highlighted fields');
+      return;
+    }
+
     try {
-      // Validate required fields
-      if (!title || !sku || !price || !color || !availableQuantity || !description || !categoryId || !productImages.length) {
-        toast.error('All fields are required');
-        return;
-      }
   
       // Upload images to Cloudinary
       const uploadPromises = productImages.map((image) => {
@@ -392,7 +387,7 @@ const AddProduct = () => {
         },
       };
   
-      const response = await axiosInstance.post('/product', productData);
+      await axiosInstance.post('/product', productData);
       toast.success('Product added successfully!');
       
       resetForm();
@@ -411,11 +406,11 @@ const AddProduct = () => {
       case 'sku':
         return value.length < 4 ? 'SKU must be at least 4 characters' : '';
       case 'price':
-        return isNaN(value) || value <= 0 ? 'Price must be a positive number' : '';
+        return getPriceError(value);
       case 'color':
         return value.length < 2 ? 'Color must be at least 2 characters' : '';
       case 'availableQuantity':
-        return isNaN(value) || value < 0 ? 'Quantity must be a non-negative number' : '';
+        return getQuantityError(value);
       case 'description':
         return value.length < 10 ? 'Description must be at least 10 characters' : '';
       default:
@@ -567,13 +562,14 @@ const AddProduct = () => {
 
   const handleRemoveVariant = (index) => {
     setVariants(prev => prev.filter((_, i) => i !== index));
+    setVariantErrors(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-6 bg-white shadow rounded mt-10">
+    <div className="max-w-3xl mx-auto p-4 sm:p-6 bg-white shadow rounded mt-10">
       <h2 className="text-2xl font-bold mb-4 text-center">Add New Product</h2>
       <form onSubmit={handleSubmit} encType="multipart/form-data">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="mb-6">
             <input
               placeholder="Title"
@@ -686,7 +682,7 @@ const AddProduct = () => {
         </div>
 
         <div className="my-4">
-          <label className="block text-lg font-semibold">Product Images <span className="text-red-500 text-sm">(Required: Add at least three image)</span></label>
+          <label className="block text-lg font-semibold">Product Images <span className="text-red-500 text-sm">(Required: at least one image)</span></label>
           {previewImages.length < 7 && (
             <div className="relative">
               <input
@@ -805,13 +801,13 @@ const AddProduct = () => {
           
           {variantAttributes.map((attr, attrIndex) => (
             <div key={attrIndex} className="mb-6 p-4 border rounded-lg bg-gray-50">
-              <div className="flex items-center gap-4 mb-4">
+              <div className="flex flex-wrap items-center gap-4 mb-4">
                 <input
                   type="text"
                   value={attr.attribute}
                   onChange={(e) => handleAttributeChange(attrIndex, e.target.value)}
                   placeholder="Attribute Name (e.g., RAM, Color)"
-                  className="flex-1 border border-gray-300 p-2 rounded"
+                  className="flex-1 min-w-[10rem] border border-gray-300 p-2 rounded"
                 />
                 <button
                   type="button"
@@ -855,7 +851,7 @@ const AddProduct = () => {
             </div>
           ))}
 
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             <button
               type="button"
               onClick={addNewAttribute}
@@ -953,24 +949,23 @@ const AddProduct = () => {
               </div>
 
               <div className="grid grid-cols-3 gap-4">
-                <input
-                  placeholder="Variant SKU"
-                  value={variant.sku}
-                  onChange={(e) => handleVariantChange(index, 'sku', e.target.value)}
-                  className="border border-gray-300 p-2 rounded"
-                />
-                <input
-                  placeholder="Variant Price"
-                  value={variant.price}
-                  onChange={(e) => handleVariantChange(index, 'price', e.target.value)}
-                  className="border border-gray-300 p-2 rounded"
-                />
-                <input
-                  placeholder="Available Quantity"
-                  value={variant.availableQuantity}
-                  onChange={(e) => handleVariantChange(index, 'availableQuantity', e.target.value)}
-                  className="border border-gray-300 p-2 rounded"
-                />
+                {[
+                  { field: 'sku', placeholder: 'Variant SKU' },
+                  { field: 'price', placeholder: 'Variant Price' },
+                  { field: 'availableQuantity', placeholder: 'Available Quantity' },
+                ].map(({ field, placeholder }) => (
+                  <div key={field}>
+                    <input
+                      placeholder={placeholder}
+                      value={variant[field]}
+                      onChange={(e) => handleVariantChange(index, field, e.target.value)}
+                      className={`w-full border ${variantErrors[index]?.[field] ? 'border-red-500' : 'border-gray-300'} p-2 rounded`}
+                    />
+                    {variantErrors[index]?.[field] && (
+                      <p className="text-red-500 text-xs mt-1">{variantErrors[index][field]}</p>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           ))}

@@ -80,6 +80,14 @@ const PRODUCT_MESSAGES = Object.freeze({
   CATEGORY_ID_REQUIRED: "Category ID is required",
   NONE_IN_CATEGORY: "No products found for this category",
   SEARCH_FAILED: "Error searching products",
+  INVALID_PRICE: "Price must be a number greater than 0",
+  INVALID_QUANTITY: "Available quantity must be a whole number of 0 or more",
+  INVALID_VARIANTS: "Variants must be a list",
+  variantSkuRequired: (index) => `Variant ${index + 1}: SKU is required`,
+  variantInvalidPrice: (index) =>
+    `Variant ${index + 1}: price must be a number greater than 0`,
+  variantInvalidQuantity: (index) =>
+    `Variant ${index + 1}: quantity must be a whole number of 0 or more`,
   statusUpdated: (status) => `Product Status updated to ${status} `,
 });
 

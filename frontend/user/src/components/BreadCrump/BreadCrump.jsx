@@ -1,4 +1,4 @@
-import React from "react";
+import PropTypes from "prop-types";
 import { Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -125,5 +125,10 @@ function Breadcrumbs({ productTitle }) {
     </motion.div>
   );
 }
+
+// Rendered without props from App.jsx, so productTitle is optional
+Breadcrumbs.propTypes = {
+  productTitle: PropTypes.string,
+};
 
 export default Breadcrumbs;

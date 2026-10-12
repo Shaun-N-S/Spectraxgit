@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '../ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import axiosInstance from '@/axios/adminAxios';
 import Swal from 'sweetalert2';
+import { formatCustomerName } from '@/lib/utils';
 
 
 
@@ -25,7 +26,7 @@ function CustomerList() {
         // Transform the data to match the expected structure
         const transformedUsers = response.data.users.map((user) => ({
           id: user._id,
-          name: `${user.firstName} ${user.lastName}`,
+          name: formatCustomerName(user),
           email: user.email,
           phone: user.phone || 'N/A', // Fallback if phone is missing
           status: user.status === 'active', // Convert 'active'/'blocked' to boolean
@@ -98,7 +99,7 @@ function CustomerList() {
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
 
   return (
-    <div className="ml-[280px] p-10">
+    <div className="p-4 sm:p-6 lg:p-10">
       <h1 className="text-3xl font-bold mb-6">Customer List</h1>
       <div className="flex justify-between items-center mb-6">
         <div className="relative">

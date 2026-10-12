@@ -1,6 +1,9 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
+import PropTypes from 'prop-types';
 import { motion } from 'framer-motion';
 import {
+  FaBars,
+  FaTimes,
   FaHome,
   FaBox,
   FaShoppingCart,
@@ -11,7 +14,7 @@ import {
   FaTicketAlt,
   FaTags,
 } from 'react-icons/fa';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button'; // Adjust the path if necessary
 import { useDispatch } from 'react-redux';
 import { logoutAdmin } from '../../redux/adminSlice';
@@ -32,7 +35,6 @@ const AdminSidebar = ({children}) => {
     {icon: FaTags, text:'Offer', href:'/offers'}
   ];
 
-  const navigate = useNavigate();
 
   
 
@@ -43,27 +45,74 @@ const AdminSidebar = ({children}) => {
     dispatch(logoutAdmin());
   };
 
+  // Below the lg breakpoint the sidebar is an off-canvas drawer; from lg up
+  // it is always visible and the content is offset by its width.
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isSidebarOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsSidebarOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isSidebarOpen]);
+
   return (
-    <div>
+    <div className="min-h-screen">
       {/* Header */}
-      <header className="bg-black text-white p-6 text-center">
+      <header className="relative bg-black text-white p-4 lg:p-6 text-center">
+        <button
+          type="button"
+          onClick={() => setIsSidebarOpen(true)}
+          className="absolute left-4 top-1/2 -translate-y-1/2 rounded-md p-2 text-white hover:bg-white/10 lg:hidden"
+          aria-label="Open navigation menu"
+          aria-expanded={isSidebarOpen}
+          aria-controls="admin-sidebar"
+        >
+          <FaBars className="h-5 w-5" />
+        </button>
         <motion.h1
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="text-4xl font-bold tracking-wider"
+          className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-wider"
         >
           SPECTRAX
         </motion.h1>
-        
+
       </header>
 
+      {/* Backdrop for the mobile drawer */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar */}
-      <motion.div
-        initial={{ x: -280 }}
-        animate={{ x: 0 }}
-        className="fixed left-0 top-0 h-screen w-[280px] bg-black text-white p-6 z-50"
+      <aside
+        id="admin-sidebar"
+        className={`fixed left-0 top-0 z-50 h-screen w-[280px] max-w-[85vw] overflow-y-auto bg-black text-white p-6 transition-transform duration-300 lg:translate-x-0 ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
       >
+        <button
+          type="button"
+          onClick={() => setIsSidebarOpen(false)}
+          className="absolute right-4 top-6 rounded-md p-2 text-gray-300 hover:bg-white/10 hover:text-white lg:hidden"
+          aria-label="Close navigation menu"
+        >
+          <FaTimes className="h-5 w-5" />
+        </button>
+
         {/* Logo */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -121,10 +170,14 @@ const AdminSidebar = ({children}) => {
             </Button>
           </div>
         </nav>
-      </motion.div>
-      <div>{children}</div>
+      </aside>
+      <div className="min-w-0 lg:ml-[280px]">{children}</div>
     </div>
   );
+};
+
+AdminSidebar.propTypes = {
+  children: PropTypes.node,
 };
 
 export default AdminSidebar;

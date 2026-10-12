@@ -83,7 +83,7 @@ export default function OrderSuccessful() {
           <CardHeader>
             <CardTitle className="text-3xl font-bold text-center">Order Not Found</CardTitle>
             <CardDescription className="text-center text-lg">
-              We couldn't find the order details you're looking for.
+              We couldn&apos;t find the order details you&apos;re looking for.
             </CardDescription>
           </CardHeader>
           <CardFooter>

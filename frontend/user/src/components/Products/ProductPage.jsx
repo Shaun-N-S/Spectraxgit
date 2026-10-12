@@ -1,17 +1,15 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import axiosInstance from "../../axios/userAxios";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-import { FaShoppingCart, FaStar } from "react-icons/fa";
+import { FaShoppingCart } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import FilterComponent from "./Filter";
-import { Heart, HeartOff } from "lucide-react";
-import PriceDisplay from "@/components/PriceDisplay/PriceDisplay";
+import { Heart } from "lucide-react";
 import { useLocation } from "react-router-dom";
-import { useCallback } from "react";
 import { debounce } from "lodash";
 
 const ProductPage = () => {
@@ -22,6 +20,8 @@ const ProductPage = () => {
   const [wishlistMap, setWishlistMap] = useState({});
   const [productOffers, setProductOffers] = useState({});
   const [categoryOffers, setCategoryOffers] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const productsPerPage = 25;
   const location = useLocation();
 
   const userDetails = useSelector((state) => state.user);
@@ -32,6 +32,11 @@ const ProductPage = () => {
   console.log(userId);
 
   const query = new URLSearchParams(location.search).get("search");
+
+  // The catalogue load, search and filter all write the product list; only
+  // the most recently started request may write it, so a slower, older
+  // response cannot overwrite newer results.
+  const productsRequestRef = useRef(0);
 
   const calculateBestDiscount = (
     originalPrice,
@@ -78,6 +83,8 @@ const ProductPage = () => {
   };
 
   const fetchData = async () => {
+    // While a search is active, the search results own the product list.
+    const requestId = query ? null : ++productsRequestRef.current;
     try {
       const productsResponse = await axiosInstance.get("/showproductsisActive");
       const products = productsResponse.data.products;
@@ -126,7 +133,9 @@ const ProductPage = () => {
 
       setProductOffers(productOffersMap);
       setCategoryOffers(categoryOffersMap);
-      setProducts(products);
+      if (requestId === productsRequestRef.current) {
+        setProducts(products);
+      }
 
       // Fetch wishlist if user is logged in
       if (userId) {
@@ -148,17 +157,31 @@ const ProductPage = () => {
     }
   };
 
+  // Re-run only when the user changes, always with the latest fetchData.
+  const fetchDataRef = useRef(fetchData);
+  useLayoutEffect(() => {
+    fetchDataRef.current = fetchData;
+  });
   useEffect(() => {
-    fetchData();
+    fetchDataRef.current();
   }, [userId]);
 
+  // The initial load, search and filter each replace the product list;
+  // every new list starts from the first page.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [products]);
+
   const fetchProducts = async (searchQuery = "") => {
+    const requestId = ++productsRequestRef.current;
     setLoading(true);
     try {
       const response = await axiosInstance.get("/search/products", {
         params: { query: searchQuery },
       });
-      setProducts(response.data.data);
+      if (requestId === productsRequestRef.current) {
+        setProducts(response.data.data);
+      }
       setLoading(false);
     } catch (error) {
       console.error("Error fetching products:", error);
@@ -167,16 +190,29 @@ const ProductPage = () => {
     }
   };
 
-  const debouncedFetchProducts = useCallback(
-    debounce((searchQuery) => {
-      fetchProducts(searchQuery);
-    }, 500), // 500ms debounce delay
+  // One debounced instance for the component's lifetime, calling the
+  // latest fetchProducts.
+  const fetchProductsRef = useRef(fetchProducts);
+  useLayoutEffect(() => {
+    fetchProductsRef.current = fetchProducts;
+  });
+  const debouncedFetchProducts = useMemo(
+    () =>
+      debounce((searchQuery) => {
+        fetchProductsRef.current(searchQuery);
+      }, 500), // 500ms debounce delay
     []
   );
 
   useEffect(() => {
     debouncedFetchProducts(query); // Fetch products dynamically
   }, [query, debouncedFetchProducts]);
+
+  // Filter results replace the list and supersede any request still in flight.
+  const setFilteredProducts = (filteredProducts) => {
+    productsRequestRef.current += 1;
+    setProducts(filteredProducts);
+  };
 
   // console.log(wishlistProducts)
   const navigate = useNavigate();
@@ -299,6 +335,12 @@ const ProductPage = () => {
 
   console.log(products._id);
   console.log("products in ....", products);
+
+  const totalPages = Math.ceil(products.length / productsPerPage);
+  const startIndex = (currentPage - 1) * productsPerPage;
+  const endIndex = startIndex + productsPerPage;
+  const currentProducts = products.slice(startIndex, endIndex);
+
   return (
     <div className="bg-black min-h-screen text-white py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
@@ -308,13 +350,13 @@ const ProductPage = () => {
         <FilterComponent
           isOpen={isFilterOpen}
           setIsOpen={setIsFilterOpen}
-          setProducts={setProducts}
+          setProducts={setFilteredProducts}
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           
-          {products.map((product) => {
-            const { discountedPrice, originalPrice, savings, discountPercent } =
+          {currentProducts.map((product) => {
+            const { discountedPrice, originalPrice, discountPercent } =
               calculateBestDiscount(
                 product.price,
                 productOffers[product._id],
@@ -394,6 +436,26 @@ const ProductPage = () => {
             );
           })}
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex justify-center items-center mt-6 space-x-2">
+            {Array.from({ length: totalPages }, (_, index) => (
+              <Button
+                key={index + 1}
+                variant={currentPage === index + 1 ? "default" : "outline"}
+                onClick={() => setCurrentPage(index + 1)}
+                className={`px-3 py-1 ${
+                  currentPage === index + 1
+                    ? "border border-transparent bg-green-500 text-black hover:bg-green-600"
+                    : "text-gray-600"
+                }`}
+              >
+                {index + 1}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

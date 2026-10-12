@@ -28,9 +28,10 @@ export default function CartPage() {
   }
 
   const navigate = useNavigate()
+  const currentUserId = getUserId(userDetails)
 
   useEffect(() => {
-    const userId = getUserId(userDetails)
+    const userId = currentUserId
     const fetchCartData = async () => {
       try {
         setLoading(true);
@@ -112,7 +113,7 @@ export default function CartPage() {
     if (userId) {
       fetchCartData();
     }
-  }, []);
+  }, [currentUserId]);
   
 
   const updateQuantity = async (id, newQuantity , availableQuantity) => {
@@ -219,10 +220,11 @@ export default function CartPage() {
             ) : (
               <div className="space-y-6">
                 {cartItems.map((item) => (
-                  <div key={item.id} className="flex items-center space-x-4 text-white">
-                  <img src={item.image} alt={item.name} className="w-24 h-24 object-cover rounded-md" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg">{item.name}</h3>
+                  <div key={item.id} className="flex flex-col gap-4 text-white sm:flex-row sm:items-center">
+                  <div className="flex flex-1 items-center gap-4 min-w-0">
+                  <img src={item.image} alt={item.name} className="w-20 h-20 sm:w-24 sm:h-24 shrink-0 object-cover rounded-md" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-lg break-words">{item.name}</h3>
                     {item.variant && (
                       <>
                         <div className="text-sm text-gray-400 mt-1">
@@ -249,6 +251,8 @@ export default function CartPage() {
     <p className="text-gray-400 mt-1">Discount: {item.discountPercent}%</p>
     <p className="text-white mt-1">Price: ₹{item.discountedPrice.toFixed(2)}</p>
                   </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 sm:justify-start">
                   <div className="flex items-center space-x-2">
                     <Button 
                       variant="outline" 
@@ -290,6 +294,7 @@ export default function CartPage() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                  </div>
                   </div>
                 ))}
               </div>

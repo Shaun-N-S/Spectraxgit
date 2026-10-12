@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,31 @@ import { Save, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import axiosInstance from "@/axios/adminAxios";
 import cloudAxios from "axios";
-import axios from "axios";
+import {
+  getMissingSpecificationLabels,
+  getPriceError,
+  getSpecificationError,
+  hasVariantErrors,
+  validateSpecifications,
+  validateVariants,
+} from "./productValidation";
+
+// Specification fields shown (and validated) on this form.
+const EDIT_SPECIFICATION_KEYS = [
+  "model",
+  "series",
+  "warranty",
+  "manufacturer",
+  "itemWeight",
+  "countryOfOrigin",
+];
+
+// Required on this form but optional in the product schema, so older
+// products may not have them.
+const REQUIRED_PRODUCT_FIELDS = [
+  { key: "color", label: "Color" },
+  { key: "description", label: "Description" },
+];
 
 const EditProduct = () => {
   const { id } = useParams();
@@ -67,11 +91,9 @@ const EditProduct = () => {
     },
   });
 
-
   const [variants, setVariants] = useState([]);
   const [variantErrors, setVariantErrors] = useState([]);
-
-
+  const [missingFields, setMissingFields] = useState([]);
 
   // Fetch product data by ID
   useEffect(() => {
@@ -80,12 +102,37 @@ const EditProduct = () => {
         const response = await axiosInstance.get(`/showProductById/${id}`);
         console.log(" fetched dataaaaaaaa......  ", response.data);
 
-        setProduct(response.data.product);
+        const loadedProduct = response.data.product;
+        const loadedSpecifications = loadedProduct.specifications || {};
+        setProduct({
+          ...loadedProduct,
+          specifications: {
+            ...loadedSpecifications,
+            ...Object.fromEntries(
+              EDIT_SPECIFICATION_KEYS.filter(
+                (key) => loadedSpecifications[key] === undefined,
+              ).map((key) => [key, ""]),
+            ),
+          },
+        });
+        // Required fields this (possibly legacy) product has no value for.
+        setMissingFields([
+          ...REQUIRED_PRODUCT_FIELDS.filter(
+            ({ key }) => !String(loadedProduct[key] ?? "").trim(),
+          ).map(({ label }) => label),
+          ...getMissingSpecificationLabels(
+            loadedSpecifications,
+            EDIT_SPECIFICATION_KEYS,
+          ),
+        ]);
         setVariants(response.data.product.variants || []);
 
-        const arrimg = response.data.product.productImage.map((img) => {
-          return img;
-        },[id]);
+        const arrimg = response.data.product.productImage.map(
+          (img) => {
+            return img;
+          },
+          [id],
+        );
 
         console.log("img.................", arrimg);
 
@@ -131,30 +178,6 @@ const EditProduct = () => {
     return "";
   };
 
-  const validateSpecifications = (specs) => {
-    const newErrors = {};
-    if (!specs.model || specs.model.length < 2) {
-      newErrors.model = "Model must be at least 2 characters";
-    }
-    if (!specs.series || specs.series.length < 2) {
-      newErrors.series = "Series must be at least 2 characters";
-    }
-    if (!specs.warranty) {
-      newErrors.warranty = "Warranty is required";
-    }
-    if (!specs.manufacturer || specs.manufacturer.length < 2) {
-      newErrors.manufacturer = "Manufacturer must be at least 2 characters";
-    }
-    if (!specs.itemWeight) {
-      newErrors.itemWeight = "Item weight is required";
-    }
-    if (!specs.countryOfOrigin || specs.countryOfOrigin.length < 2) {
-      newErrors.countryOfOrigin =
-        "Country of origin must be at least 2 characters";
-    }
-    return newErrors;
-  };
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setProduct((prev) => ({ ...prev, [name]: value }));
@@ -179,12 +202,7 @@ const EditProduct = () => {
       ...prev,
       specifications: {
         ...prev.specifications,
-        [key]:
-          value.length < 2
-            ? `${
-                key.charAt(0).toUpperCase() + key.slice(1)
-              } must be at least 2 characters`
-            : "",
+        [key]: getSpecificationError(key, value),
       },
     }));
   };
@@ -204,42 +222,60 @@ const EditProduct = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-  
-    // Validate variants first
-    const isVariantsValid = validateVariants(variants);
-    if (!isVariantsValid) {
+
+    const specErrors = validateSpecifications(
+      product.specifications,
+      EDIT_SPECIFICATION_KEYS,
+    );
+    const priceError = getPriceError(product.price);
+    const newVariantErrors = validateVariants(variants);
+
+    setErrors((prev) => ({
+      ...prev,
+      price: priceError,
+      specifications: specErrors,
+    }));
+    setVariantErrors(newVariantErrors);
+
+    if (hasVariantErrors(newVariantErrors)) {
       toast.error("Please check variant details");
       return;
     }
-  
+    if (priceError || Object.keys(specErrors).length > 0) {
+      toast.error("Please fix the highlighted fields");
+      return;
+    }
+
     try {
       let imageUrls = [];
-  
+
       // Keep existing URLs and handle new files
-      const existingUrls = images.filter(img => typeof img === "string" && !img.startsWith("blob:"));
-      const newImages = images.filter(img => img instanceof File);
-  
+      const existingUrls = images.filter(
+        (img) => typeof img === "string" && !img.startsWith("blob:"),
+      );
+      const newImages = images.filter((img) => img instanceof File);
+
       imageUrls = [...existingUrls];
-  
+
       // Upload new images
       for (const image of newImages) {
         const formData = new FormData();
         formData.append("file", image);
         formData.append("upload_preset", "products");
-  
+
         const response = await cloudAxios.post(
           "https://api.cloudinary.com/v1_1/djfuu8l1u/image/upload",
-          formData
+          formData,
         );
         imageUrls.push(response.data.secure_url);
       }
-  
-      const updatedProduct = { 
-        ...product, 
+
+      const updatedProduct = {
+        ...product,
         productImage: imageUrls,
-        variants: variants 
+        variants: variants,
       };
-  
+
       await axiosInstance.put(`/product/${id}`, updatedProduct);
       toast.success("Product updated successfully!");
       setTimeout(() => navigate("/products"), 2000);
@@ -258,63 +294,31 @@ const EditProduct = () => {
     setImages(updatedImages);
   };
 
-
-
-  const validateVariants = (variants) => {
-    const errors = variants.map(variant => ({
-      sku: !variant.sku ? 'SKU is required' : '',
-      price: !variant.price ? 'Price is required' : 
-             variant.price <= 0 ? 'Price must be greater than 0' : '',
-      availableQuantity: !variant.availableQuantity ? 'Quantity is required' : 
-                        variant.availableQuantity < 0 ? 'Quantity cannot be negative' : ''
-    }));
-    setVariantErrors(errors);
-    return errors.every(error => !error.sku && !error.price && !error.availableQuantity);
-  };
-
-
-
   const handleVariantChange = (index, field, value) => {
     const updatedVariants = [...variants];
     updatedVariants[index][field] = value;
     setVariants(updatedVariants);
   };
 
-  
-
-
-  const handleRemoveVariant = (index) => {
-    setVariants(variants.filter((_, i) => i !== index));
-  };
-
-
-
-
-
-
-
-
   return (
     <div className="flex">
-      {/* Admin Sidebar */}
-      <div className="w-64 bg-gray-800 text-white min-h-screen">
-        <h2 className="text-2xl p-4 font-bold">Admin Sidebar</h2>
-        <ul className="p-4">
-          <li className="mb-2">
-            <a href="/products">Products</a>
-          </li>
-          {/* <li className="mb-2"><a href="/orders">Orders</a></li> */}
-        </ul>
-      </div>
-
       {/* Main Content */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
-        className="flex-1 p-8 bg-gray-100 min-h-screen"
+        className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 bg-gray-100 min-h-screen"
       >
         <h1 className="text-3xl font-bold mb-8">Edit Product</h1>
+        {missingFields.length > 0 && (
+          <div
+            role="status"
+            className="mb-6 rounded border border-yellow-300 bg-yellow-50 p-4 text-sm text-yellow-900"
+          >
+            This product is missing required details:{" "}
+            {missingFields.join(", ")}. Complete them to save changes.
+          </div>
+        )}
         <form
           onSubmit={handleSubmit}
           className="space-y-6 bg-white p-6 rounded shadow-md"
@@ -442,7 +446,12 @@ const EditProduct = () => {
             </div>
 
             <div>
-              <input type="file" accept="image/*" onChange={handleFileChange} />
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="max-w-full"
+              />
 
               <div className="flex gap-3 flex-wrap">
                 {images.map((image, index) => (
@@ -454,7 +463,7 @@ const EditProduct = () => {
                     />
                     <button
                       type="button"
-                      onClick={() => handleRemoveImage(index)} 
+                      onClick={() => handleRemoveImage(index)}
                       className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg"
                     >
                       &times;
@@ -577,7 +586,7 @@ const EditProduct = () => {
                     onChange={(e) =>
                       handleSpecificationChange(
                         "countryOfOrigin",
-                        e.target.value
+                        e.target.value,
                       )
                     }
                     className={
@@ -597,54 +606,80 @@ const EditProduct = () => {
             </div>
           </div>
 
-            <div className="col-span-2 mt-6">
-            <h3 className="text-lg font-semibold mb-4">Product Variants ({variants.length})</h3>
+          <div className="col-span-2 mt-6">
+            <h3 className="text-lg font-semibold mb-4">
+              Product Variants ({variants.length})
+            </h3>
             <div className="space-y-4">
-            {variants.map((variant, index) => (
-              <div key={index} className="border p-4 rounded-lg">
-                {/* ... existing variant combination display ... */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label>SKU</Label>
-                    <Input
-                      value={variant.sku}
-                      onChange={(e) => handleVariantChange(index, 'sku', e.target.value)}
-                      className={variantErrors[index]?.sku ? "border-red-500" : ""}
-                    />
-                    {variantErrors[index]?.sku && (
-                      <p className="text-red-500 text-xs mt-1">{variantErrors[index].sku}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label>Price</Label>
-                    <Input
-                      type="number"
-                      value={variant.price}
-                      onChange={(e) => handleVariantChange(index, 'price', e.target.value)}
-                      className={variantErrors[index]?.price ? "border-red-500" : ""}
-                    />
-                    {variantErrors[index]?.price && (
-                      <p className="text-red-500 text-xs mt-1">{variantErrors[index].price}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label>Quantity</Label>
-                    <Input
-                      type="number"
-                      value={variant.availableQuantity}
-                      onChange={(e) => handleVariantChange(index, 'availableQuantity', e.target.value)}
-                      className={variantErrors[index]?.availableQuantity ? "border-red-500" : ""}
-                    />
-                    {variantErrors[index]?.availableQuantity && (
-                      <p className="text-red-500 text-xs mt-1">{variantErrors[index].availableQuantity}</p>
-                    )}
+              {variants.map((variant, index) => (
+                <div key={index} className="border p-4 rounded-lg">
+                  {/* ... existing variant combination display ... */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <Label>SKU</Label>
+                      <Input
+                        value={variant.sku}
+                        onChange={(e) =>
+                          handleVariantChange(index, "sku", e.target.value)
+                        }
+                        className={
+                          variantErrors[index]?.sku ? "border-red-500" : ""
+                        }
+                      />
+                      {variantErrors[index]?.sku && (
+                        <p className="text-red-500 text-xs mt-1">
+                          {variantErrors[index].sku}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <Label>Price</Label>
+                      <Input
+                        type="number"
+                        value={variant.price}
+                        onChange={(e) =>
+                          handleVariantChange(index, "price", e.target.value)
+                        }
+                        className={
+                          variantErrors[index]?.price ? "border-red-500" : ""
+                        }
+                      />
+                      {variantErrors[index]?.price && (
+                        <p className="text-red-500 text-xs mt-1">
+                          {variantErrors[index].price}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <Label>Quantity</Label>
+                      <Input
+                        type="number"
+                        value={variant.availableQuantity}
+                        onChange={(e) =>
+                          handleVariantChange(
+                            index,
+                            "availableQuantity",
+                            e.target.value,
+                          )
+                        }
+                        className={
+                          variantErrors[index]?.availableQuantity
+                            ? "border-red-500"
+                            : ""
+                        }
+                      />
+                      {variantErrors[index]?.availableQuantity && (
+                        <p className="text-red-500 text-xs mt-1">
+                          {variantErrors[index].availableQuantity}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
             </div>
           </div>
-          
+
           <div className="flex justify-end space-x-4">
             <Button
               type="button"

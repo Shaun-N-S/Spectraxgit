@@ -1,4 +1,3 @@
-import React from 'react'
 import Login from './components/Login/Login'
 import { BrowserRouter ,Route, Routes } from 'react-router-dom'
 import Home from './components/Dashboard/Home'
