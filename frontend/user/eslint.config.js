@@ -35,4 +35,16 @@ export default [
       ],
     },
   },
+  // Generated shadcn/ui primitives forward arbitrary props to Radix/DOM
+  // elements; prop validation is not maintained for them. Application
+  // components keep react/prop-types.
+  {
+    files: ['src/components/ui/**/*.{js,jsx}'],
+    rules: { 'react/prop-types': 'off' },
+  },
+  // Tooling config files (tailwind, vite, postcss) run in Node, not the browser.
+  {
+    files: ['*.config.js'],
+    languageOptions: { globals: globals.node },
+  },
 ]

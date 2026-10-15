@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { ShoppingCart, Heart, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import axiosInstance from "@/axios/userAxios";
 import { useSelector } from "react-redux";
 import { toast } from "react-hot-toast";
+import { formatCurrency } from "@/lib/utils";
 import PriceDisplay from "@/components/PriceDisplay/PriceDisplay";
 
 export default function ProductDetail() {
@@ -19,16 +20,8 @@ export default function ProductDetail() {
   const [brand, setBrand] = useState("");
   const [zoomStyle, setZoomStyle] = useState({ display: "none" });
   const [selectedVariant, setSelectedVariant] = useState(null);
-  const [isInWishlist, setIsInWishlist] = useState(false);
-  const [offerData, setOfferData] = useState(null);
   const [productOffer, setProductOffer] = useState(null);
   const [categoryOffer, setCategoryOffer] = useState(null);
-  const [bestDiscount, setBestDiscount] = useState({
-    discountedPrice: 0,
-    originalPrice: 0,
-    savings: 0,
-    discountPercent: 0,
-  });
   const [wishlistMap, setWishlistMap] = useState({});
   const navigate = useNavigate();
 
@@ -38,6 +31,9 @@ export default function ProductDetail() {
   };
   const userId = getUserId(userDetails);
   const { id } = useParams();
+
+  // Latest fetchData for the effect below, which re-runs only when `id` changes.
+  const fetchDataRef = useRef(null);
 
   useEffect(() => {
     // Reset product-specific UI state before loading a different product, so
@@ -52,7 +48,7 @@ export default function ProductDetail() {
     setProductOffer(null);
     setCategoryOffer(null);
     setRelatedProducts([]);
-    fetchData();
+    fetchDataRef.current();
   }, [id]);
 
   const fetchData = async () => {
@@ -83,7 +79,6 @@ export default function ProductDetail() {
             newWishlistMap[item.productId._id] = true;
           });
           setWishlistMap(newWishlistMap);
-          setIsInWishlist(!!newWishlistMap[id]); // Update isInWishlist based on wishlistMap
         } catch (error) {
           console.error("Error fetching wishlist:", error);
         }
@@ -132,15 +127,6 @@ export default function ProductDetail() {
         }
       }
 
-      // Calculate best discount only if we have a valid variant
-      if (product.variants && product.variants.length > 0) {
-        calculateBestDiscount(
-          product.variants[0].price,
-          productOfferData,
-          categoryOfferData,
-        );
-      }
-
       // Fetch related products if category exists
       if (product.categoryId) {
         fetchRelatedProducts(product.categoryId);
@@ -153,59 +139,11 @@ export default function ProductDetail() {
       setLoading(false);
     }
   };
-
-  const calculateBestDiscount = (
-    originalPrice,
-    productOffer,
-    categoryOffer,
-  ) => {
-    let bestDiscountPercent = 0;
-    const currentDate = new Date();
-
-    // Check product offer
-    if (
-      productOffer &&
-      productOffer.isActive &&
-      new Date(productOffer.startDate) <= currentDate &&
-      new Date(productOffer.endDate) >= currentDate
-    ) {
-      bestDiscountPercent = Math.max(
-        bestDiscountPercent,
-        productOffer.discountPercent,
-      );
-    }
-
-    // Check category offer
-    if (
-      categoryOffer &&
-      categoryOffer.isActive &&
-      new Date(categoryOffer.startDate) <= currentDate &&
-      new Date(categoryOffer.endDate) >= currentDate
-    ) {
-      bestDiscountPercent = Math.max(
-        bestDiscountPercent,
-        categoryOffer.discountPercent,
-      );
-    }
-
-    const discountedPrice =
-      originalPrice - originalPrice * (bestDiscountPercent / 100);
-    const savings = originalPrice - discountedPrice;
-
-    setBestDiscount({
-      discountedPrice: discountedPrice,
-      originalPrice: originalPrice,
-      savings: savings,
-      discountPercent: bestDiscountPercent,
-    });
-  };
-
-  // Update discount calculation when variant changes
-  useEffect(() => {
-    if (selectedVariant && (productOffer || categoryOffer)) {
-      calculateBestDiscount(selectedVariant.price, productOffer, categoryOffer);
-    }
-  }, [selectedVariant, productOffer, categoryOffer]);
+  // Layout effects run before passive effects in every commit, so the
+  // effect above always calls this render's fetchData.
+  useLayoutEffect(() => {
+    fetchDataRef.current = fetchData;
+  });
 
   console.log(
     "offer ID .............................................",
@@ -247,11 +185,15 @@ export default function ProductDetail() {
     });
   };
 
-  const handleCart = async (userId, productId, variantId) => {
+  const handleCart = async (userId, productId) => {
     console.log("suer ID  ....", userId);
     if (!userId) {
       toast.error("Please login to add items to cart");
       navigate("/login");
+      return;
+    }
+    if (!selectedVariant) {
+      toast.error("This product is currently unavailable");
       return;
     }
     try {
@@ -271,7 +213,7 @@ export default function ProductDetail() {
       navigate("/cart");
     } catch (error) {
       console.error("Error in handle cart:", error);
-      toast.error("Product is out of stock");
+      toast.error(error.response?.data?.message || "Product is out of stock");
     }
   };
 
@@ -279,6 +221,10 @@ export default function ProductDetail() {
     if (!userId) {
       toast.error("Please login to add items to wishlist");
       navigate("/login");
+      return;
+    }
+    if (!selectedVariant) {
+      toast.error("This product is currently unavailable");
       return;
     }
 
@@ -299,7 +245,6 @@ export default function ProductDetail() {
             delete newMap[id];
             return newMap;
           });
-          setIsInWishlist(false);
           toast.success("Removed from wishlist");
         }
       } else {
@@ -314,7 +259,6 @@ export default function ProductDetail() {
             ...prev,
             [id]: true,
           }));
-          setIsInWishlist(true);
           toast.success("Added to wishlist");
         }
       }
@@ -426,16 +370,20 @@ export default function ProductDetail() {
               <p className="text-sm text-gray-400">
                 Available Stock :
                 <span
-                  className={`font-semibold ${selectedVariant.availableQuantity > 0 ? "text-white" : "text-red-500"}`}
+                  className={`font-semibold ${selectedVariant?.availableQuantity > 0 ? "text-white" : "text-red-500"}`}
                 >
-                  {selectedVariant.availableQuantity > 0
-                    ? selectedVariant.availableQuantity
-                    : "Out of Stock"}
+                  {!selectedVariant
+                    ? "Currently unavailable"
+                    : selectedVariant.availableQuantity > 0
+                      ? selectedVariant.availableQuantity
+                      : "Out of Stock"}
                 </span>
               </p>
             </div>
 
-            {/* Variants */}
+            {/* Variants (hidden for a product with one option-less variant) */}
+            {(productData.variants?.length > 1 ||
+              productData.variants?.[0]?.attributes?.length > 0) && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Variants</h3>
               <div className="grid grid-cols-2 gap-4 ">
@@ -459,6 +407,7 @@ export default function ProductDetail() {
                 ))}
               </div>
             </div>
+            )}
 
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -466,8 +415,9 @@ export default function ProductDetail() {
                   size="lg"
                   className="w-full bg-blue-950 text-primary-foreground hover:bg-blue-950 transition-all duration-300 hover:scale-105"
                   onClick={() =>
-                    handleCart(userId, productData._id, selectedVariant._id)
+                    handleCart(userId, productData._id, selectedVariant?._id)
                   }
+                  disabled={!selectedVariant}
                 >
                   <ShoppingCart className="w-4 h-4 mr-2" />
                   Add to Cart
@@ -515,11 +465,11 @@ export default function ProductDetail() {
                     </div>
                     <div>
                       <dt className="font-medium text-gray-400">Model</dt>
-                      <dd>{productData.specifications.model}</dd>
+                      <dd>{productData.specifications?.model}</dd>
                     </div>
                     <div>
                       <dt className="font-medium text-gray-400">Series</dt>
-                      <dd>{productData.specifications.series}</dd>
+                      <dd>{productData.specifications?.series}</dd>
                     </div>
                     <div>
                       <dt className="font-medium text-gray-400">Color</dt>
@@ -527,11 +477,11 @@ export default function ProductDetail() {
                     </div>
                     <div>
                       <dt className="font-medium text-gray-400">Weight</dt>
-                      <dd>{productData.specifications.itemWeight}</dd>
+                      <dd>{productData.specifications?.itemWeight}</dd>
                     </div>
                     <div>
                       <dt className="font-medium text-gray-400">Dimensions</dt>
-                      <dd>{productData.specifications.dimensions}</dd>
+                      <dd>{productData.specifications?.dimensions}</dd>
                     </div>
                   </dl>
                 </Card>
@@ -543,17 +493,17 @@ export default function ProductDetail() {
                       <dt className="font-medium text-gray-400">
                         Manufacturer
                       </dt>
-                      <dd>{productData.specifications.manufacturer}</dd>
+                      <dd>{productData.specifications?.manufacturer}</dd>
                     </div>
                     <div>
                       <dt className="font-medium text-gray-400">
                         Country of Origin
                       </dt>
-                      <dd>{productData.specifications.countryOfOrigin}</dd>
+                      <dd>{productData.specifications?.countryOfOrigin}</dd>
                     </div>
                     <div>
                       <dt className="font-medium text-gray-400">Warranty</dt>
-                      <dd>{productData.specifications.warranty}</dd>
+                      <dd>{productData.specifications?.warranty}</dd>
                     </div>
                   </dl>
                 </Card>
@@ -586,7 +536,7 @@ export default function ProductDetail() {
                       {product.title}
                     </h3>
                     <p className="text-lg font-bold text-white">
-                      ₹{product.price?.toFixed(2)}
+                      {formatCurrency(product.price)}
                     </p>
                     <Button
                       variant="secondary"

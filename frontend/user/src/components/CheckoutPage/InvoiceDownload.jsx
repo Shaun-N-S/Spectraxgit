@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { formatCurrencyForPdf } from '@/lib/utils';
 
 export const downloadInvoice = (orderDetails) => {
   const doc = new jsPDF();
@@ -51,7 +52,7 @@ export const downloadInvoice = (orderDetails) => {
     item.name,
     item.variant?.name || item.variant?.attributes?.map((attr) => `${attr.value}`).join(', ') || 'N/A',
     item.quantity,
-    `₹${item.price?.toFixed(2)}`,
+    formatCurrencyForPdf(item.price),
   ]);
 
   doc.autoTable({
@@ -110,15 +111,15 @@ export const downloadInvoice = (orderDetails) => {
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
-  doc.text(`Subtotal: ₹${orderDetails.totalAmount?.toFixed(2)}`, 18, summaryStartY + 15);
+  doc.text(`Subtotal: ${formatCurrencyForPdf(orderDetails.totalAmount)}`, 18, summaryStartY + 15);
   doc.text(`Coupon Applied: ${orderDetails.coupon?.code || 'None'}`, 18, summaryStartY + 21);
   doc.text(
-    `Delivery Charges: ₹${orderDetails.deliveryCharge?.toFixed(2) || '0.00'}`,
+    `Delivery Charges: ${formatCurrencyForPdf(orderDetails.deliveryCharge)}`,
     18,
     summaryStartY + 27
   );
   doc.setFont('helvetica', 'bold');
-  doc.text(`Total Paid: ₹${orderDetails.finalAmount?.toFixed(2)}`, 18, summaryStartY + 33);
+  doc.text(`Total Paid: ${formatCurrencyForPdf(orderDetails.finalAmount)}`, 18, summaryStartY + 33);
 
   // Footer Section
   doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);

@@ -96,8 +96,8 @@ function CouponList() {
   };
 
   return (
-    <div className="ml-[280px] p-10">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-4 sm:p-6 lg:p-10">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <h1 className="text-3xl font-bold">Coupon Management</h1>
         <Button onClick={handleAddCoupon}>
           <PlusCircle className="mr-2 h-4 w-4" /> Add New Coupon

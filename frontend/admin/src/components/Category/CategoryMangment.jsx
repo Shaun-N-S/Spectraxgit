@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FaEdit, FaPlusCircle } from 'react-icons/fa';
 import axios from '../../axios/adminAxios';
 import { toast } from 'react-toastify';
 import { Button } from '@/components/ui/button';
-import AdminSidebar from '../SideBar/AdminSidebar';
 import Swal from 'sweetalert2';
 
 
@@ -209,11 +208,8 @@ const CategoryManagement = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar */}
-      <AdminSidebar className="w-64 min-h-screen bg-white shadow-md" />
-
       {/* Main Content */}
-      <div className="flex-1 p-8">
+      <div className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
         <div className="max-w-5xl mx-auto">
           <h1 className="text-3xl font-bold text-gray-800 mb-6 border-l-4 border-blue-500 pl-4">
             Category Management
@@ -259,7 +255,7 @@ const CategoryManagement = () => {
           </div>
 
           {/* Categories List */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
+          <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full table-auto">
               <thead>
                 <tr className="border-b">

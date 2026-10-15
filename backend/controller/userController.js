@@ -8,6 +8,13 @@ const {
   generateAccessToken,
   generateRefreshToken,
 } = require("../utils/tokenUtils");
+const { getNameFromGooglePayload } = require("../utils/googleProfile");
+const { HTTP_STATUS } = require("../constants/httpStatus");
+const {
+  COMMON_MESSAGES,
+  AUTH_MESSAGES,
+  USER_MESSAGES,
+} = require("../constants/messages");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -61,18 +68,22 @@ const signup = async (req, res) => {
       req.body;
 
     if (typeof email !== "string" || !email.trim()) {
-      return res.status(400).json({ message: "Invalid email" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.INVALID_EMAIL });
     }
 
     if (password !== confirmPassword) {
-      return res.status(400).json({ message: "Passwords do not match" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.PASSWORDS_DO_NOT_MATCH });
     }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res
-        .status(400)
-        .json({ message: "User with this email already exists" });
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.EMAIL_ALREADY_REGISTERED });
     }
 
     const otp = generateOtp();
@@ -80,26 +91,33 @@ const signup = async (req, res) => {
     const emailSent = await sendVerificationEmail(email, otp);
     if (!emailSent) {
       return res
-        .status(500)
-        .json({ message: "Failed to send verification email" });
+        .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+        .json({ message: AUTH_MESSAGES.VERIFICATION_EMAIL_FAILED });
     }
 
     const hashedPassword = await securePassword(password);
 
-    // OTP and the pending signup payload live server-side only, keyed by this
-    // browser's session (connect-mongo backed). The client never receives the
-    // OTP value or the password (hashed here already) in any form.
     req.session.otp = otp;
     req.session.otpPurpose = "signup";
     req.session.otpEmail = email;
     req.session.otpExpiresAt = Date.now() + OTP_TTL_MS;
-    req.session.pendingSignupData = { firstName, lastName, email, phone, hashedPassword };
+    req.session.pendingSignupData = {
+      firstName,
+      lastName,
+      email,
+      phone,
+      hashedPassword,
+    };
     req.session.pendingSignupExpiresAt = Date.now() + PENDING_SIGNUP_TTL_MS;
 
-    res.status(200).json({ success: true, message: "OTP sent successfully" });
+    res
+      .status(HTTP_STATUS.OK)
+      .json({ success: true, message: AUTH_MESSAGES.OTP_SENT });
   } catch (error) {
     console.error("Signup error:", error.message);
-    res.status(500).json({ message: "An internal server error occurred" });
+    res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_OCCURRED });
   }
 };
 
@@ -114,12 +132,14 @@ const verifyOtp = async (req, res) => {
       Date.now() > req.session.otpExpiresAt
     ) {
       return res
-        .status(400)
-        .json({ message: "OTP has expired. Please request a new one." });
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.OTP_EXPIRED });
     }
 
     if (otp !== req.session.otp) {
-      return res.status(400).json({ message: "Invalid OTP" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.INVALID_OTP });
     }
 
     const pendingData = req.session.pendingSignupData;
@@ -129,8 +149,8 @@ const verifyOtp = async (req, res) => {
       Date.now() > req.session.pendingSignupExpiresAt
     ) {
       return res
-        .status(400)
-        .json({ message: "Signup session expired. Please sign up again." });
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.SIGNUP_SESSION_EXPIRED });
     }
 
     const { firstName, lastName, email, phone, hashedPassword } = pendingData;
@@ -157,11 +177,13 @@ const verifyOtp = async (req, res) => {
     delete userResponse.password;
 
     return res
-      .status(201)
-      .json({ message: "User registered successfully", user: userResponse });
+      .status(HTTP_STATUS.CREATED)
+      .json({ message: AUTH_MESSAGES.USER_REGISTERED, user: userResponse });
   } catch (error) {
     console.error("OTP verification error:", error.message);
-    res.status(500).json({ message: "Server error" });
+    res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.SERVER_ERROR });
   }
 };
 
@@ -169,24 +191,30 @@ const resendOtp = async (req, res) => {
   try {
     if (!req.session.otpPurpose || !req.session.otpEmail) {
       return res
-        .status(400)
-        .json({ message: "No pending verification found. Please start over." });
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.NO_PENDING_VERIFICATION });
     }
 
     const otp = generateOtp();
 
     const emailSent = await sendVerificationEmail(req.session.otpEmail, otp);
     if (!emailSent) {
-      return res.status(500).json({ message: "Failed to resend OTP" });
+      return res
+        .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+        .json({ message: AUTH_MESSAGES.OTP_RESEND_FAILED });
     }
 
     req.session.otp = otp;
     req.session.otpExpiresAt = Date.now() + OTP_TTL_MS;
 
-    return res.status(200).json({ message: "OTP resent successfully" });
+    return res
+      .status(HTTP_STATUS.OK)
+      .json({ message: AUTH_MESSAGES.OTP_RESENT });
   } catch (error) {
     console.error("Resend OTP error:", error.message);
-    return res.status(500).json({ message: "Server error" });
+    return res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.SERVER_ERROR });
   }
 };
 
@@ -195,7 +223,9 @@ const googleAuth = async (req, res) => {
     const { token } = req.body;
 
     if (!token) {
-      return res.status(400).json({ message: "Token is required" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.GOOGLE_TOKEN_REQUIRED });
     }
 
     const ticket = await client.verifyIdToken({
@@ -205,12 +235,7 @@ const googleAuth = async (req, res) => {
 
     const payload = ticket.getPayload();
 
-    // Extract name parts
-    const fullName = payload.given_name || payload.name || "";
-    const nameParts = fullName.split(" ");
-    const firstName = nameParts[0];
-    // Join the rest of the parts as lastName, or use a default
-    const lastName = nameParts.slice(1).join(" ") || "Unknown";
+    const { firstName, lastName } = getNameFromGooglePayload(payload);
 
     const { email } = payload;
 
@@ -220,7 +245,8 @@ const googleAuth = async (req, res) => {
     if (!user) {
       user = new User({
         firstName,
-        lastName,
+        // Omitted when Google has no family name (allowed for googleAuth users)
+        ...(lastName && { lastName }),
         email,
         googleAuth: true,
       });
@@ -233,7 +259,7 @@ const googleAuth = async (req, res) => {
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     });
 
     res.cookie("refreshToken", refreshToken, {
@@ -242,8 +268,8 @@ const googleAuth = async (req, res) => {
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     });
 
-    res.status(200).json({
-      message: "Google login successful",
+    res.status(HTTP_STATUS.OK).json({
+      message: AUTH_MESSAGES.GOOGLE_LOGIN_SUCCESS,
       id: user._id,
       name: user.firstName,
       email: user.email,
@@ -254,8 +280,8 @@ const googleAuth = async (req, res) => {
       stack: error.stack,
       name: error.name,
     });
-    res.status(500).json({
-      message: "Internal server error",
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR,
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
@@ -266,41 +292,43 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     if (typeof email !== "string" || !email.trim()) {
-      return res.status(400).json({ message: "Invalid email" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.INVALID_EMAIL });
     }
 
     const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(400).json({
-        message: "Invalid email or password",
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        message: AUTH_MESSAGES.INVALID_EMAIL_OR_PASSWORD,
       });
     }
 
     if (user.status === "blocked") {
-      return res.status(403).json({
-        message:
-          "Your account is temporarily restricted. Please contact support.",
+      return res.status(HTTP_STATUS.FORBIDDEN).json({
+        message: AUTH_MESSAGES.ACCOUNT_RESTRICTED,
       });
     }
 
     if (user.role !== "user") {
-      return res.status(400).json({ message: "Check your role" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.CHECK_ROLE });
     }
 
-    // Google-authenticated accounts have no password on record — attempting
-    // bcrypt.compare against undefined would throw. Return a clear, actionable
-    // business error instead of an internal-server-error.
     if (!user.password) {
-      return res.status(400).json({
-        message: "This account uses Google Sign-In. Please log in with Google.",
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        message: AUTH_MESSAGES.GOOGLE_ACCOUNT_PASSWORD_LOGIN,
       });
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
-      return res.status(400).json({ message: "Invalid email or password" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.INVALID_EMAIL_OR_PASSWORD });
     }
 
     // Generate tokens
@@ -322,13 +350,15 @@ const login = async (req, res) => {
 
     const safeUser = await User.findById(user._id).select("-password");
 
-    return res.status(200).json({
-      message: "User logged in",
+    return res.status(HTTP_STATUS.OK).json({
+      message: AUTH_MESSAGES.USER_LOGGED_IN,
       user: safeUser,
     });
   } catch (error) {
     console.error("Login error:", error);
-    res.status(500).json({ message: "An internal server error occurred" });
+    res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_OCCURRED });
   }
 };
 
@@ -347,12 +377,14 @@ const logoutUser = (req, res) => {
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     });
 
-    return res.status(200).json({ message: "Logged out successfully" });
+    return res
+      .status(HTTP_STATUS.OK)
+      .json({ message: AUTH_MESSAGES.LOGOUT_SUCCESS });
   } catch (error) {
     console.error("Logout error:", error);
     return res
-      .status(500)
-      .json({ message: "Internal server error during logout" });
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: AUTH_MESSAGES.LOGOUT_FAILED });
   }
 };
 
@@ -360,7 +392,9 @@ const refreshAccessToken = (req, res) => {
   const refreshToken = req.cookies.refreshToken;
 
   if (!refreshToken) {
-    return res.status(401).json({ message: "No refresh token provided" });
+    return res
+      .status(HTTP_STATUS.UNAUTHORIZED)
+      .json({ message: AUTH_MESSAGES.NO_REFRESH_TOKEN });
   }
 
   try {
@@ -375,12 +409,14 @@ const refreshAccessToken = (req, res) => {
       maxAge: 15 * 60 * 1000, // 15 minutes
     });
 
-    res.status(200).json({ message: "Token refreshed successfully" });
+    res.status(HTTP_STATUS.OK).json({ message: AUTH_MESSAGES.TOKEN_REFRESHED });
   } catch (error) {
     console.error("Refresh token error:", error.message);
     // Clear the invalid refresh token
     res.clearCookie("refreshToken");
-    res.status(401).json({ message: "Invalid or expired refresh token" });
+    res
+      .status(HTTP_STATUS.UNAUTHORIZED)
+      .json({ message: AUTH_MESSAGES.INVALID_REFRESH_TOKEN });
   }
 };
 
@@ -399,18 +435,21 @@ const updateUserStatus = async (req, res) => {
 
     // If no user found, send a 404 response
     if (!updatedUser) {
-      return res.status(404).json({ message: "User not found" });
+      return res
+        .status(HTTP_STATUS.NOT_FOUND)
+        .json({ message: COMMON_MESSAGES.USER_NOT_FOUND });
     }
 
     // Respond with the updated user data
     res
-      .status(200)
-      .json({ message: "User status updated successfully", user: updatedUser });
+      .status(HTTP_STATUS.OK)
+      .json({ message: USER_MESSAGES.STATUS_UPDATED, user: updatedUser });
   } catch (error) {
     console.error("Error updating user status:", error);
-    res
-      .status(500)
-      .json({ message: "Error updating user status", error: error.message });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      message: USER_MESSAGES.STATUS_UPDATE_FAILED,
+      error: error.message,
+    });
   }
 };
 
@@ -419,12 +458,16 @@ const forgotPassword = async (req, res) => {
     const { email } = req.body;
 
     if (typeof email !== "string" || !email.trim()) {
-      return res.status(400).json({ message: "Invalid email" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.INVALID_EMAIL });
     }
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res
+        .status(HTTP_STATUS.NOT_FOUND)
+        .json({ message: COMMON_MESSAGES.USER_NOT_FOUND });
     }
 
     const otp = generateOtp();
@@ -432,8 +475,8 @@ const forgotPassword = async (req, res) => {
     const emailSent = await sendVerificationEmail(email, otp);
     if (!emailSent) {
       return res
-        .status(500)
-        .json({ message: "Failed to send verification email" });
+        .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+        .json({ message: AUTH_MESSAGES.VERIFICATION_EMAIL_FAILED });
     }
 
     // OTP lives server-side only, keyed by this browser's session.
@@ -446,10 +489,14 @@ const forgotPassword = async (req, res) => {
     delete req.session.resetAuthorizedEmail;
     delete req.session.resetAuthorizedUntil;
 
-    res.status(200).json({ success: true, message: "OTP sent successfully" });
+    res
+      .status(HTTP_STATUS.OK)
+      .json({ success: true, message: AUTH_MESSAGES.OTP_SENT });
   } catch (error) {
     console.error("Error in forget password:", error.message);
-    return res.status(500).json({ message: "Internal server error" });
+    return res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
   }
 };
 
@@ -458,7 +505,9 @@ const forgotPasswordVerifyOtp = async (req, res) => {
     const { otp } = req.body;
 
     if (!otp) {
-      return res.status(400).json({ message: "Please enter OTP" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.OTP_REQUIRED });
     }
 
     if (
@@ -468,17 +517,16 @@ const forgotPasswordVerifyOtp = async (req, res) => {
       Date.now() > req.session.otpExpiresAt
     ) {
       return res
-        .status(400)
-        .json({ message: "OTP has expired. Please request a new one." });
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.OTP_EXPIRED });
     }
 
     if (otp !== req.session.otp) {
-      return res.status(400).json({ message: "Invalid OTP" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.INVALID_OTP });
     }
 
-    // Mark the reset authorized server-side, scoped to this email, for a
-    // bounded window. resetPassword below will trust only this — never a
-    // client-supplied email.
     req.session.resetAuthorized = true;
     req.session.resetAuthorizedEmail = req.session.otpEmail;
     req.session.resetAuthorizedUntil = Date.now() + RESET_AUTHORIZATION_TTL_MS;
@@ -488,10 +536,14 @@ const forgotPasswordVerifyOtp = async (req, res) => {
     delete req.session.otpPurpose;
     delete req.session.otpExpiresAt;
 
-    return res.status(200).json({ message: "OTP verified successfully" });
+    return res
+      .status(HTTP_STATUS.OK)
+      .json({ message: AUTH_MESSAGES.OTP_VERIFIED });
   } catch (error) {
     console.log("Error in verifying forgot password OTP:", error.message);
-    return res.status(500).json({ message: "Internal server error" });
+    return res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
   }
 };
 
@@ -506,13 +558,17 @@ const resetPassword = async (req, res) => {
       Date.now() > req.session.resetAuthorizedUntil
     ) {
       return res
-        .status(400)
-        .json({ message: "Session expired. Please try again." });
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: AUTH_MESSAGES.RESET_SESSION_EXPIRED });
     }
 
-    const user = await User.findOne({ email: req.session.resetAuthorizedEmail });
+    const user = await User.findOne({
+      email: req.session.resetAuthorizedEmail,
+    });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res
+        .status(HTTP_STATUS.NOT_FOUND)
+        .json({ message: COMMON_MESSAGES.USER_NOT_FOUND });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -526,11 +582,13 @@ const resetPassword = async (req, res) => {
     delete req.session.otpEmail;
 
     res
-      .status(200)
-      .json({ success: true, message: "Password reset successfully." });
+      .status(HTTP_STATUS.OK)
+      .json({ success: true, message: AUTH_MESSAGES.PASSWORD_RESET_SUCCESS });
   } catch (error) {
     console.error("Error in reset password:", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
   }
 };
 
@@ -539,13 +597,17 @@ const updateProfile = async (req, res) => {
     const { firstName, lastName, email, phone } = req.body;
 
     if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: USER_MESSAGES.EMAIL_REQUIRED });
     }
 
     const user = await User.findById(req.user.id).select("-password");
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res
+        .status(HTTP_STATUS.NOT_FOUND)
+        .json({ message: COMMON_MESSAGES.USER_NOT_FOUND });
     }
 
     if (firstName) {
@@ -562,13 +624,15 @@ const updateProfile = async (req, res) => {
 
     const safeUser = await User.findById(user._id).select("-password");
 
-    return res.status(200).json({
-      message: "Profile updated successfully",
+    return res.status(HTTP_STATUS.OK).json({
+      message: USER_MESSAGES.PROFILE_UPDATED,
       user: safeUser,
     });
   } catch (error) {
     console.log("Error in updating profile:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    return res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
   }
 };
 
@@ -577,20 +641,20 @@ const userProfile = async (req, res) => {
     const user = await User.findById(req.user.id).select("-password");
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        message: COMMON_MESSAGES.USER_NOT_FOUND,
       });
     }
 
-    return res.status(200).json({
-      message: "User found successfully",
+    return res.status(HTTP_STATUS.OK).json({
+      message: USER_MESSAGES.USER_FOUND,
       user,
     });
   } catch (error) {
     console.error(error);
 
-    return res.status(500).json({
-      message: "Internal server error",
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR,
     });
   }
 };
@@ -602,16 +666,16 @@ const updatePassword = async (req, res) => {
     const user = await User.findById(req.user.id);
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        message: COMMON_MESSAGES.USER_NOT_FOUND,
       });
     }
 
     const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
 
     if (!isPasswordValid) {
-      return res.status(400).json({
-        message: "Invalid old password",
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        message: USER_MESSAGES.INVALID_OLD_PASSWORD,
       });
     }
 
@@ -619,14 +683,14 @@ const updatePassword = async (req, res) => {
 
     await user.save();
 
-    return res.status(200).json({
-      message: "Password updated successfully",
+    return res.status(HTTP_STATUS.OK).json({
+      message: USER_MESSAGES.PASSWORD_UPDATED,
     });
   } catch (error) {
     console.error(error);
 
-    return res.status(500).json({
-      message: "Internal server error",
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR,
     });
   }
 };

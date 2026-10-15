@@ -1,10 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axiosInstance from '@/axios/adminAxios';
 // import { toast } from 'react-toastify';
 import {toast} from 'react-hot-toast';
-import cloudAxios from 'axios';
+import { uploadProductImage } from '@/lib/cloudinaryUpload';
 import Cropper from 'react-easy-crop';
 import { useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
+import Swal from 'sweetalert2';
+import {
+  getPriceError,
+  getQuantityError,
+  getSpecificationError,
+  hasVariantErrors,
+  validateSpecifications,
+  validateVariants,
+} from './productValidation';
 
 const AddProduct = () => {
 
@@ -19,7 +29,7 @@ const AddProduct = () => {
   const [productImages, setProductImages] = useState([]);
   const [categoryId, setCategoryId] = useState('');
   const [brandId, setBrandId] = useState('');
-  const [status, setStatus] = useState('active');
+  const [status] = useState('active');
   const [variants, setVariants] = useState([{ 
     attributes: [], 
     sku: '', 
@@ -27,6 +37,7 @@ const AddProduct = () => {
     availableQuantity: '',
     specifications: {}
   }]);
+  const [variantErrors, setVariantErrors] = useState([]);
   const [variantAttributes, setVariantAttributes] = useState([
     { attribute: '', values: [''] }
   ]);
@@ -50,6 +61,9 @@ const AddProduct = () => {
   const [previewImages, setPreviewImages] = useState([]);
   const [selectedAttributes, setSelectedAttributes] = useState({});
   const [showVariantForm, setShowVariantForm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Submission error the backend (or image upload) reported that belongs to no single field
+  const [formError, setFormError] = useState('');
   const [errors, setErrors] = useState({
     title: '',
     sku: '',
@@ -193,6 +207,12 @@ const AddProduct = () => {
       }
       return updatedVariants;
     });
+    setVariantErrors((prev) => {
+      if (!prev[index]) return prev;
+      const updated = [...prev];
+      updated[index] = validateVariants([{ ...variants[index], [field]: value }])[0];
+      return updated;
+    });
   };
 
   const handleAttributeChange = (index, value) => {
@@ -302,39 +322,15 @@ const AddProduct = () => {
       ...prev,
       specifications: {
         ...prev.specifications,
-        [key]: value.length < 2 ? `${key.charAt(0).toUpperCase() + key.slice(1)} must be at least 2 characters` : ''
+        [key]: getSpecificationError(key, value)
       }
     }));
   };
 
-  const validateSpecifications = (specs) => {
-    const newErrors = {};
-    if (!specs.model || specs.model.length < 2) {
-      newErrors.model = 'Model must be at least 2 characters';
-    }
-    if (!specs.series || specs.series.length < 2) {
-      newErrors.series = 'Series must be at least 2 characters';
-    }
-    if (!specs.warranty) {
-      newErrors.warranty = 'Warranty is required';
-    }
-    if (!specs.manufacturer || specs.manufacturer.length < 2) {
-      newErrors.manufacturer = 'Manufacturer must be at least 2 characters';
-    }
-    if (!specs.itemWeight) {
-      newErrors.itemWeight = 'Item weight is required';
-    }
-    if (!specs.dimensions) {
-      newErrors.dimensions = 'Dimensions are required';
-    }
-    if (!specs.countryOfOrigin || specs.countryOfOrigin.length < 2) {
-      newErrors.countryOfOrigin = 'Country of origin must be at least 2 characters';
-    }
-    return newErrors;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setFormError('');
   
     // Validate all fields
     const specErrors = validateSpecifications(specifications);
@@ -350,26 +346,32 @@ const AddProduct = () => {
       images: productImages.length === 0 ? 'Please add at least one product image' : '',
       specifications: specErrors
     };
+    const newVariantErrors = validateVariants(variants);
 
-    
+    setErrors(newErrors);
+    setVariantErrors(newVariantErrors);
+
+    const hasFieldErrors = Object.entries(newErrors).some(([key, value]) =>
+      key === 'specifications' ? Object.keys(value).length > 0 : Boolean(value)
+    );
+    if (hasFieldErrors || hasVariantErrors(newVariantErrors)) {
+      toast.error('Please fix the highlighted fields');
+      // Bring the first highlighted field into view once the errors render
+      setTimeout(() => {
+        const firstInvalid = document.querySelector('form .border-red-500');
+        firstInvalid?.scrollIntoView({ block: 'center' });
+        firstInvalid?.focus();
+      }, 0);
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      // Validate required fields
-      if (!title || !sku || !price || !color || !availableQuantity || !description || !categoryId || !productImages.length) {
-        toast.error('All fields are required');
-        return;
-      }
   
-      // Upload images to Cloudinary
-      const uploadPromises = productImages.map((image) => {
-        const formData = new FormData();
-        formData.append('file', image);
-        formData.append('upload_preset', 'products');
-        formData.append('cloud_name', 'djfuu8l1u');
-        return cloudAxios.post('https://api.cloudinary.com/v1_1/djfuu8l1u/image/upload', formData);
-      });
-  
-      const imageResponses = await Promise.all(uploadPromises);
-      const imageUrls = imageResponses.map((res) => res.data.secure_url);
+      // Upload images to Cloudinary (signed by the backend)
+      const imageUrls = await Promise.all(
+        productImages.map((image) => uploadProductImage(image))
+      );
   
       const selectedBrand = brands.find(b => b.name === specifications.brand);
       
@@ -392,7 +394,7 @@ const AddProduct = () => {
         },
       };
   
-      const response = await axiosInstance.post('/product', productData);
+      await axiosInstance.post('/product', productData);
       toast.success('Product added successfully!');
       
       resetForm();
@@ -401,7 +403,50 @@ const AddProduct = () => {
     } catch (error) {
       console.error('Error adding product:', error);
       toast.error('Error adding product. Please check the console for more details.');
+      setFormError(
+        error.response?.data?.message ||
+          (String(error.config?.url).includes('cloudinary')
+            ? 'Image upload failed. Please check your connection and try again.'
+            : 'Could not add the product. Please try again.')
+      );
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  // Anything entered that leaving the page would lose
+  const hasUnsavedChanges = () =>
+    [title, sku, price, color, availableQuantity, description, categoryId, brandId].some(
+      (value) => String(value).trim() !== ''
+    ) ||
+    productImages.length > 0 ||
+    Object.values(specifications).some((value) => String(value ?? '').trim() !== '') ||
+    variants.length !== 1 ||
+    variants.some(
+      (variant) =>
+        variant.attributes.length > 0 ||
+        ['sku', 'price', 'availableQuantity'].some((field) => String(variant[field] ?? '').trim() !== '')
+    ) ||
+    variantAttributes.some((attr) => attr.attribute.trim() || attr.values.some((value) => value.trim()));
+
+  // Close / Cancel: back to the product list without submitting. Asks first
+  // only when something has been entered.
+  const handleClose = async () => {
+    if (isSubmitting) return;
+    if (hasUnsavedChanges()) {
+      const result = await Swal.fire({
+        title: 'Discard this product?',
+        text: 'The details you entered will not be saved.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Discard',
+        cancelButtonText: 'Keep editing',
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+      });
+      if (!result.isConfirmed) return;
+    }
+    navigate('/products');
   };
 
   const validateField = (name, value) => {
@@ -411,11 +456,11 @@ const AddProduct = () => {
       case 'sku':
         return value.length < 4 ? 'SKU must be at least 4 characters' : '';
       case 'price':
-        return isNaN(value) || value <= 0 ? 'Price must be a positive number' : '';
+        return getPriceError(value);
       case 'color':
         return value.length < 2 ? 'Color must be at least 2 characters' : '';
       case 'availableQuantity':
-        return isNaN(value) || value < 0 ? 'Quantity must be a non-negative number' : '';
+        return getQuantityError(value);
       case 'description':
         return value.length < 10 ? 'Description must be at least 10 characters' : '';
       default:
@@ -567,13 +612,26 @@ const AddProduct = () => {
 
   const handleRemoveVariant = (index) => {
     setVariants(prev => prev.filter((_, i) => i !== index));
+    setVariantErrors(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-6 bg-white shadow rounded mt-10">
-      <h2 className="text-2xl font-bold mb-4 text-center">Add New Product</h2>
-      <form onSubmit={handleSubmit} encType="multipart/form-data">
-        <div className="grid grid-cols-2 gap-4">
+    <div className="max-w-3xl mx-auto p-4 sm:p-6 bg-white shadow rounded mt-10">
+      <div className="relative mb-4">
+        <h2 className="text-2xl font-bold text-center">Add New Product</h2>
+        <button
+          type="button"
+          onClick={handleClose}
+          aria-label="Close and return to products"
+          title="Close"
+          className="absolute right-0 top-1/2 -translate-y-1/2 rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          <X className="h-5 w-5" aria-hidden="true" />
+        </button>
+      </div>
+      {/* noValidate: the inline messages below replace the browser's one-field-at-a-time popups */}
+      <form onSubmit={handleSubmit} encType="multipart/form-data" noValidate>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="mb-6">
             <input
               placeholder="Title"
@@ -601,7 +659,7 @@ const AddProduct = () => {
           <div className="mb-6">
             <input
               type="number"
-              placeholder="Price"
+              placeholder="Price (₹)"
               name="price"
               value={price}
               onChange={handleInputChange}
@@ -686,7 +744,7 @@ const AddProduct = () => {
         </div>
 
         <div className="my-4">
-          <label className="block text-lg font-semibold">Product Images <span className="text-red-500 text-sm">(Required: Add at least three image)</span></label>
+          <label className="block text-lg font-semibold">Product Images <span className="text-red-500 text-sm">(Required: at least one image)</span></label>
           {previewImages.length < 7 && (
             <div className="relative">
               <input
@@ -805,13 +863,13 @@ const AddProduct = () => {
           
           {variantAttributes.map((attr, attrIndex) => (
             <div key={attrIndex} className="mb-6 p-4 border rounded-lg bg-gray-50">
-              <div className="flex items-center gap-4 mb-4">
+              <div className="flex flex-wrap items-center gap-4 mb-4">
                 <input
                   type="text"
                   value={attr.attribute}
                   onChange={(e) => handleAttributeChange(attrIndex, e.target.value)}
                   placeholder="Attribute Name (e.g., RAM, Color)"
-                  className="flex-1 border border-gray-300 p-2 rounded"
+                  className="flex-1 min-w-[10rem] border border-gray-300 p-2 rounded"
                 />
                 <button
                   type="button"
@@ -855,7 +913,7 @@ const AddProduct = () => {
             </div>
           ))}
 
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             <button
               type="button"
               onClick={addNewAttribute}
@@ -930,6 +988,11 @@ const AddProduct = () => {
 
         <div className="my-6">
           <label className="block text-xl font-semibold mb-4">Product Variants ({variants.length})</label>
+          {variants.length === 0 && (
+            <p className="text-sm text-gray-600 mb-4">
+              No variants: the product is saved with one default variant that uses its SKU, price and available quantity.
+            </p>
+          )}
           {variants.map((variant, index) => (
             <div key={index} className="mb-8 p-4 border rounded-lg bg-gray-50">
               <div className="flex justify-between items-start mb-4">
@@ -953,30 +1016,48 @@ const AddProduct = () => {
               </div>
 
               <div className="grid grid-cols-3 gap-4">
-                <input
-                  placeholder="Variant SKU"
-                  value={variant.sku}
-                  onChange={(e) => handleVariantChange(index, 'sku', e.target.value)}
-                  className="border border-gray-300 p-2 rounded"
-                />
-                <input
-                  placeholder="Variant Price"
-                  value={variant.price}
-                  onChange={(e) => handleVariantChange(index, 'price', e.target.value)}
-                  className="border border-gray-300 p-2 rounded"
-                />
-                <input
-                  placeholder="Available Quantity"
-                  value={variant.availableQuantity}
-                  onChange={(e) => handleVariantChange(index, 'availableQuantity', e.target.value)}
-                  className="border border-gray-300 p-2 rounded"
-                />
+                {[
+                  { field: 'sku', placeholder: 'Variant SKU' },
+                  { field: 'price', placeholder: 'Variant Price (₹)' },
+                  { field: 'availableQuantity', placeholder: 'Available Quantity' },
+                ].map(({ field, placeholder }) => (
+                  <div key={field}>
+                    <input
+                      placeholder={placeholder}
+                      value={variant[field]}
+                      onChange={(e) => handleVariantChange(index, field, e.target.value)}
+                      className={`w-full border ${variantErrors[index]?.[field] ? 'border-red-500' : 'border-gray-300'} p-2 rounded`}
+                    />
+                    {variantErrors[index]?.[field] && (
+                      <p className="text-red-500 text-xs mt-1">{variantErrors[index][field]}</p>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           ))}
         </div>
 
-        <button type="submit" className="bg-blue-600 text-white py-2 px-4 rounded-full">Add Product</button>
+        {formError && (
+          <p role="alert" className="text-red-600 text-sm mb-3">{formError}</p>
+        )}
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="bg-blue-600 text-white py-2 px-4 rounded-full disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Adding Product...' : 'Add Product'}
+          </button>
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="border border-gray-300 text-gray-700 py-2 px-4 rounded-full hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            Cancel
+          </button>
+        </div>
       </form>
 
       {showCropper && (

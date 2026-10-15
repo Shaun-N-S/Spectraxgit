@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { format } from 'date-fns';
-import { CalendarIcon, PlusCircle, X } from 'lucide-react';
+import { CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -107,17 +107,20 @@ export default function AddOffer() {
     try {
       if (isEditing) {
         // Update existing offer
-        const response = await axiosInstance.put(`/Offer/update/${offerId}`, values);
+        await axiosInstance.put(`/Offer/update/${offerId}`, values);
         toast.success('Offer updated successfully.');
       } else {
         // Add new offer
-        const response = await axiosInstance.post('/Offer/Add', values);
+        await axiosInstance.post('/Offer/Add', values);
         toast.success('The offer has been successfully created.');
       }
       navigate('/offers');
       form.reset();
     } catch (error) {
-      toast.error(isEditing ? 'Error updating the offer.' : 'Error creating the offer.');
+      toast.error(
+        error.response?.data?.message ||
+          (isEditing ? 'Error updating the offer.' : 'Error creating the offer.')
+      );
     } finally {
       setIsLoading(false);
     }
@@ -129,7 +132,7 @@ export default function AddOffer() {
   }
 
   return (
-    <div className="ml-[280px] p-10">
+    <div className="p-4 sm:p-6 lg:p-10">
      <h1 className="text-3xl font-bold mb-6">
         {isEditing ? 'Edit Offer' : 'Create New Offer'}
       </h1>
@@ -302,7 +305,7 @@ export default function AddOffer() {
                 {isEditing ? 'Update Offer' : 'Create Offer'}
               </Button>
               <div>
-              <Button onClick={handleCancel}>Cancel</Button>
+              <Button type="button" onClick={handleCancel}>Cancel</Button>
               </div>
             </div>
           </form>

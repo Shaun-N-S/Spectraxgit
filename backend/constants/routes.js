@@ -58,6 +58,7 @@ const USER_ROUTES = {
   PRODUCTS_BY_CATEGORY: "/productsByCategory/:id",
   FILTER_PRODUCTS: "/filterProduct",
   SEARCH_PRODUCTS: "/search/products",
+  SHOP_PRODUCTS: "/shop/products",
 
   // Brands
   BRAND_BY_ID: "/showBrandbyId/:id",
@@ -123,6 +124,7 @@ const ADMIN_ROUTES = {
   // Sales Reports
   SALES_REPORT: "/sales-report",
   SALES_ANALYTICS: "/sales-analytics",
+  UPLOAD_SIGNATURE: "/upload-signature",
 };
 
 module.exports = {

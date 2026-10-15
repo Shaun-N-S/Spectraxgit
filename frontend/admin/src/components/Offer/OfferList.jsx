@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -71,7 +71,7 @@ export default function OfferList() {
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
   
   return (
-    <div className="ml-[280px] p-10">
+    <div className="p-4 sm:p-6 lg:p-10">
      
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Offer List</h1>
@@ -93,7 +93,7 @@ export default function OfferList() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {offers.map((offer) => (
+            {currentOffers.map((offer) => (
               <TableRow key={offer.id}>
                 <TableCell className="font-medium">{offer.name}</TableCell>
                 <TableCell>{offer.discountPercent}%</TableCell>

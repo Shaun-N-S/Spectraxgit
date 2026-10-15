@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "react-hot-toast";
+import { formatCurrency, getActiveOfferPercent } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -116,8 +117,7 @@ const CheckoutPage = () => {
                 const offerDetails = await axiosInstance.get(
                   `/Offer/fetch/${product.offerId}`,
                 );
-                productOffer =
-                  offerDetails.data.offerData?.discountPercent || 0;
+                productOffer = getActiveOfferPercent(offerDetails.data.offerData);
               } catch (error) {
                 console.log("No product offer found:", error);
               }
@@ -128,8 +128,9 @@ const CheckoutPage = () => {
                 const categoryOfferDetails = await axiosInstance.get(
                   `/Offer/category/${product.categoryId}`,
                 );
-                categoryOffer =
-                  categoryOfferDetails.data.offerData?.discountPercent || 0;
+                categoryOffer = getActiveOfferPercent(
+                  categoryOfferDetails.data.offerData,
+                );
               } catch (error) {
                 console.log("No category offer found:", error);
               }
@@ -298,7 +299,7 @@ const CheckoutPage = () => {
 
   const handlePlaceOrder = async () => {
     if (cartItems.some((item) => item.originalPrice > 1000)) {
-      toast.error("Cash on Delivery is not available for items over ₹1000");
+      toast.error(`Cash on Delivery is not available for items over ${formatCurrency(1000)}`);
       return;
     }
 
@@ -519,8 +520,10 @@ const CheckoutPage = () => {
 
     try {
       // Create Razorpay order
+      // The server computes the amount from the cart and coupon
       const orderResponse = await axiosInstance.post("/create-razorpay-order", {
         amount: calculateFinalPrice(),
+        couponCode: appliedCoupon?.name,
         currency: "INR",
       });
 
@@ -552,6 +555,8 @@ const CheckoutPage = () => {
               totalAmount: priceDetails.total,
               finalAmount: calculateFinalPrice(),
               razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
               status: "Completed",
             };
 
@@ -1014,15 +1019,15 @@ const CheckoutPage = () => {
                             Qty: {item.quantity}
                           </p>
                           <p className="text-sm text-gray-400 line-through">
-                            Original Price: ₹
-                            {(item.originalPrice * item.quantity).toFixed(2)}
+                            Original Price:{" "}
+                            {formatCurrency(item.originalPrice * item.quantity)}
                           </p>
                           <p className="text-sm text-green-400">
                             Discount: {item.discountPercent}%
                           </p>
                           <p className="font-bold text-green-400">
-                            Price: ₹
-                            {(item.discountedPrice * item.quantity).toFixed(2)}
+                            Price:{" "}
+                            {formatCurrency(item.discountedPrice * item.quantity)}
                           </p>
                         </div>
                       </div>
@@ -1071,7 +1076,7 @@ const CheckoutPage = () => {
                         Coupon {appliedCoupon.name} applied successfully!
                         {appliedCoupon.CouponType === "percentage"
                           ? `${appliedCoupon.offerPrice}% off`
-                          : `₹${appliedCoupon.offerPrice} off`}
+                          : `${formatCurrency(appliedCoupon.offerPrice)} off`}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -1083,17 +1088,15 @@ const CheckoutPage = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between text-gray-400">
                     <span>Subtotal</span>
-                    <span>₹{priceDetails.subtotal.toFixed(2)}</span>
+                    <span>{formatCurrency(priceDetails.subtotal)}</span>
                   </div>
 
                   {appliedCoupon && (
                     <div className="flex justify-between text-green-400">
                       <span>Discount</span>
                       <span>
-                        - ₹
-                        {(priceDetails.total - calculateFinalPrice()).toFixed(
-                          2,
-                        )}
+                        -{" "}
+                        {formatCurrency(priceDetails.total - calculateFinalPrice())}
                       </span>
                     </div>
                   )}
@@ -1102,7 +1105,7 @@ const CheckoutPage = () => {
 
                   <div className="flex justify-between font-bold text-lg text-green-400">
                     <span>Total</span>
-                    <span>₹{calculateFinalPrice().toFixed(2)}</span>
+                    <span>{formatCurrency(calculateFinalPrice())}</span>
                   </div>
                 </div>
               </CardContent>

@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import '../signup/SignUp.css';
 import axiosInstance from '@/axios/userAxios';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { User } from 'lucide-react';
 
 const ForgetPasswordOtp = () => {
   const [otp, setOtp] = useState('');
@@ -12,7 +10,6 @@ const ForgetPasswordOtp = () => {
   const [timer, setTimer] = useState(60);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const location = useLocation();
   
   
 //   const userData = JSON.parse(localStorage.getItem('user'));
@@ -30,7 +27,7 @@ const ForgetPasswordOtp = () => {
 
     setLoading(true);
     try {
-      const response = await axiosInstance.post('/forgot-password-verifyOtp', { otp }, { withCredentials: true });
+      await axiosInstance.post('/forgot-password-verifyOtp', { otp }, { withCredentials: true });
       // alert('OTP verified successfully!');
       toast.success('OTP verified successfully!');
       setTimeout(() => {

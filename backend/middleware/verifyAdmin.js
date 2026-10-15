@@ -1,6 +1,8 @@
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
+const { HTTP_STATUS } = require("../constants/httpStatus");
+const { AUTH_MESSAGES } = require("../constants/messages");
 
 const verifyAdmin = async (req, res, next) => {
   let token = req.cookies?.token;
@@ -12,14 +14,14 @@ const verifyAdmin = async (req, res, next) => {
       const admin = await User.findById(decode.id).select("-password");
 
       if (!admin) {
-        return res.status(401).json({
-          message: "Admin not found",
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+          message: AUTH_MESSAGES.ADMIN_NOT_FOUND,
         });
       }
 
       if (!admin.isAdmin) {
-        return res.status(403).json({
-          message: "Access denied",
+        return res.status(HTTP_STATUS.FORBIDDEN).json({
+          message: AUTH_MESSAGES.ACCESS_DENIED,
         });
       }
 
@@ -30,10 +32,10 @@ const verifyAdmin = async (req, res, next) => {
       console.log(error);
 
       console.log("Not authorized , token failed");
-      res.status(401).json({ message: "Not authorized token failed" });
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({ message: AUTH_MESSAGES.NOT_AUTHORIZED_TOKEN_FAILED });
     }
   } else {
-    res.status(401).json({ message: "Not authorized , no token" });
+    res.status(HTTP_STATUS.UNAUTHORIZED).json({ message: AUTH_MESSAGES.NOT_AUTHORIZED_NO_TOKEN });
     console.log("Not authorized , no token");
   }
 };

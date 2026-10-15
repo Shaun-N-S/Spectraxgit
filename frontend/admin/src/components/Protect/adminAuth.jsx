@@ -1,3 +1,4 @@
+import PropTypes from "prop-types";
 import { useSelector } from "react-redux";
 import { Navigate } from "react-router-dom";
 
@@ -8,4 +9,8 @@ function AdminAuth({ children }) {
     }
     return children; // Render the `AdminHome` component if logged in
 }
+AdminAuth.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
 export default AdminAuth;

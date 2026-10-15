@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, PlusCircle } from "lucide-react";
+import { CalendarIcon, PlusCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -122,11 +122,26 @@ export default function AddCoupon() {
     }
   };
 
+  // Leaves without saving; unsaved form changes are discarded.
+  const handleCancel = () => navigate("/coupons");
+
   return (
-    <div className="ml-[280px] p-10">
-      <h1 className="text-3xl font-bold mb-6">
-        {isEditing ? "Edit Coupon" : "Add New Coupon"}
-      </h1>
+    <div className="p-4 sm:p-6 lg:p-10">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold">
+          {isEditing ? "Edit Coupon" : "Add New Coupon"}
+        </h1>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={handleCancel}
+          aria-label="Close and return to coupons"
+          title="Close"
+        >
+          <X className="h-5 w-5" aria-hidden="true" />
+        </Button>
+      </div>
 
       <Form {...form}>
         <form
@@ -196,7 +211,7 @@ export default function AddCoupon() {
               name="minimumPrice"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Minimum Price</FormLabel>
+                  <FormLabel>Minimum Price (₹)</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -279,6 +294,15 @@ export default function AddCoupon() {
               : isEditing
                 ? "Update Coupon"
                 : "Add Coupon"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 ml-2"
+            onClick={handleCancel}
+            disabled={isSubmitting}
+          >
+            Cancel
           </Button>
         </form>
       </Form>

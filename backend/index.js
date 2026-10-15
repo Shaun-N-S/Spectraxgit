@@ -12,6 +12,7 @@ const cookieParser = require("cookie-parser");
 const adminRoutes = require("./routes/adminRoutes");
 const { apiLimiter } = require("./middleware/rateLimiter");
 const { handleRazorpayWebhook } = require("./controller/orderController");
+const { HTTP_STATUS } = require("./constants/httpStatus");
 
 const PORT = process.env.PORT || 4000;
 
@@ -80,7 +81,7 @@ mongoose
   });
 
 app.get("/", (req, res) => {
-  res.status(200).json({
+  res.status(HTTP_STATUS.OK).json({
     service: "SpectraX Backend",
     status: "running",
   });
@@ -90,14 +91,14 @@ app.get("/health", async (req, res) => {
   try {
     const mongoState = mongoose.connection.readyState;
 
-    return res.status(200).json({
+    return res.status(HTTP_STATUS.OK).json({
       status: "healthy",
       database: mongoState === 1 ? "connected" : "disconnected",
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    return res.status(500).json({
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       status: "unhealthy",
     });
   }

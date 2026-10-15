@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -108,12 +108,12 @@ const validateBrandName = (name) => {
     }
   
     try {
-      const response = await axiosInstance.post('/addbrand', { name, status: "active" });
+      await axiosInstance.post('/addbrand', { name, status: "active" });
       setBrands([...brands, { _id: brands.length + 1, name, status: 'active' }]);
       setNewBrand({ name: '' });
       setAddError('');
       toast.success('Brand added successfully');
-    } catch (error) {
+    } catch {
       toast.error('Error adding brand');
     }
   };
@@ -159,7 +159,7 @@ const validateBrandName = (name) => {
   const totalPages = Math.ceil(brands.length / brandsPerPage);
 
   return (
-    <div className="ml-[280px] p-10">
+    <div className="p-4 sm:p-6 lg:p-10">
       <h1 className="text-3xl font-bold mb-6">Brand Management</h1>
 
       {/* Add New Brand Form */}

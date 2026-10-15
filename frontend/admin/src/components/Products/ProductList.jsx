@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlusCircle, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Button } from '@/components/ui/button'; // Assuming Shadcn Button component is available
-import AdminSidebar from '../SideBar/AdminSidebar';
 import axiosInstance from '@/axios/adminAxios';
+import { formatCurrency } from '@/lib/utils';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
 
@@ -84,10 +84,8 @@ const ProductList = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-100">
-      <AdminSidebar className="w-64 min-h-screen bg-white shadow-md" />
-
-      <div className="flex-1 p-6 max-w-screen-lg mx-auto">
-        <div className="flex justify-between items-center mb-4">
+      <div className="flex-1 min-w-0 p-4 sm:p-6 max-w-screen-lg mx-auto">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
           <h2 className="text-2xl font-semibold text-gray-800">Product List</h2>
           <Button onClick={() => navigate('/add-product')} className="bg-blue-600 hover:bg-blue-700">
             <PlusCircle className="mr-2 h-5 w-5" /> Add Product
@@ -124,7 +122,7 @@ const ProductList = () => {
                       <td className="px-6 py-4">
                         {categories.find((cat) => cat._id === product.categoryId)?.name || 'Unknown'}
                       </td>
-                      <td className="px-6 py-4">${product.price}</td>
+                      <td className="px-6 py-4">{formatCurrency(product.price)}</td>
                       <td className="px-6 py-4">
                         <span
                           className={`px-2 py-1 rounded-full text-xs ${

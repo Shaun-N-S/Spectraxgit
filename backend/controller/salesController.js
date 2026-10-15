@@ -2,6 +2,8 @@ const Order = require('../models/orderSchema');
 const Product = require('../models/productSchema');
 const Category = require('../models/categorySchema');
 const Brand = require('../models/brandSchema');
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { REPORT_MESSAGES } = require('../constants/messages');
 
 const salesReport = async (req, res) => {
   try {
@@ -57,7 +59,7 @@ const salesReport = async (req, res) => {
           break;
 
         default:
-          return res.status(400).json({ message: 'Invalid date range' });
+          return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: REPORT_MESSAGES.INVALID_DATE_RANGE });
       }
     }
 
@@ -75,8 +77,8 @@ const salesReport = async (req, res) => {
       { $sort: { "_id.date": 1 } },
     ]);
 
-    return res.status(200).json({
-      message: "Sales report fetched successfully",
+    return res.status(HTTP_STATUS.OK).json({
+      message: REPORT_MESSAGES.SALES_REPORT_FETCHED,
       data: salesData.map((item) => ({
         date: item._id.date,
         totalSales: item.totalSales,
@@ -87,7 +89,7 @@ const salesReport = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching sales report:", error);
-    return res.status(500).json({ message: "Error while fetching sales report" });
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: REPORT_MESSAGES.SALES_REPORT_FAILED });
   }
 };
 
@@ -175,8 +177,8 @@ const getSalesAnalytics = async (req, res) => {
       { $limit: 10 }
     ]);
 
-    return res.status(200).json({
-      message: 'Analytics data fetched successfully',
+    return res.status(HTTP_STATUS.OK).json({
+      message: REPORT_MESSAGES.ANALYTICS_FETCHED,
       data: {
         topProducts,
         topCategories,
@@ -185,7 +187,7 @@ const getSalesAnalytics = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching analytics:', error);
-    return res.status(500).json({ message: 'Error while fetching analytics data' });
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: REPORT_MESSAGES.ANALYTICS_FAILED });
   }
 };
 

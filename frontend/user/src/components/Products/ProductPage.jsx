@@ -1,18 +1,64 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import axiosInstance from "../../axios/userAxios";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-import { FaShoppingCart, FaStar } from "react-icons/fa";
+import { FaShoppingCart } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { formatCurrency } from "@/lib/utils";
 import { useSelector } from "react-redux";
 import FilterComponent from "./Filter";
-import { Heart, HeartOff } from "lucide-react";
-import PriceDisplay from "@/components/PriceDisplay/PriceDisplay";
+import PaginationControls from "../Pagination/PaginationControls";
+import { Heart } from "lucide-react";
 import { useLocation } from "react-router-dom";
-import { useCallback } from "react";
 import { debounce } from "lodash";
+
+const PRODUCTS_PER_PAGE = 25;
+
+// Product and category offers for the given products, keyed by product id.
+const fetchOffersForProducts = async (products) => {
+  const offersPromises = products.map(async (product) => {
+    const offers = { productOffer: null, categoryOffer: null };
+
+    if (product.offerId) {
+      try {
+        const productOfferResponse = await axiosInstance.get(
+          `/Offer/fetch/${product.offerId}`
+        );
+        offers.productOffer = productOfferResponse.data.offerData;
+      } catch (error) {
+        console.error("Error fetching product offer:", error);
+      }
+    }
+
+    if (product.categoryId) {
+      try {
+        const categoryOfferResponse = await axiosInstance.get(
+          `/Offer/category/${product.categoryId}`
+        );
+        offers.categoryOffer = categoryOfferResponse.data.offerData;
+      } catch (error) {
+        console.error("Error fetching category offer:", error);
+      }
+    }
+
+    return {
+      productId: product._id,
+      offers,
+    };
+  });
+
+  const offersResults = await Promise.all(offersPromises);
+
+  const productOffersMap = {};
+  const categoryOffersMap = {};
+  offersResults.forEach((result) => {
+    productOffersMap[result.productId] = result.offers.productOffer;
+    categoryOffersMap[result.productId] = result.offers.categoryOffer;
+  });
+  return { productOffersMap, categoryOffersMap };
+};
 
 const ProductPage = () => {
   const [products, setProducts] = useState([]);
@@ -22,6 +68,12 @@ const ProductPage = () => {
   const [wishlistMap, setWishlistMap] = useState({});
   const [productOffers, setProductOffers] = useState({});
   const [categoryOffers, setCategoryOffers] = useState({});
+  const [pagination, setPagination] = useState(null);
+  const [filters, setFilters] = useState({
+    sortBy: "",
+    brands: [],
+    categories: [],
+  });
   const location = useLocation();
 
   const userDetails = useSelector((state) => state.user);
@@ -31,7 +83,26 @@ const ProductPage = () => {
   const userId = getUserId(userDetails);
   console.log(userId);
 
-  const query = new URLSearchParams(location.search).get("search");
+  const query = new URLSearchParams(location.search).get("search") || "";
+
+  // A search typed into the URL is applied after 500ms; a direct visit uses
+  // the URL's search immediately.
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  const debouncedSetQuery = useMemo(() => debounce(setDebouncedQuery, 500), []);
+  useEffect(() => {
+    debouncedSetQuery(query);
+  }, [query, debouncedSetQuery]);
+
+  // The requested page belongs to one search + filter combination; a new
+  // search or filter starts again from page 1.
+  const listKey = JSON.stringify({ search: debouncedQuery, ...filters });
+  const [pageState, setPageState] = useState({ listKey, page: 1 });
+  const requestedPage = pageState.listKey === listKey ? pageState.page : 1;
+  const goToPage = (page) => setPageState({ listKey, page });
+
+  // Only the most recently started request may update the list, so a slower,
+  // older response cannot overwrite newer results.
+  const productsRequestRef = useRef(0);
 
   const calculateBestDiscount = (
     originalPrice,
@@ -77,59 +148,54 @@ const ProductPage = () => {
     };
   };
 
-  const fetchData = async () => {
-    try {
-      const productsResponse = await axiosInstance.get("/showproductsisActive");
-      const products = productsResponse.data.products;
+  // The backend returns one page of active products matching the search,
+  // filters and sort, plus pagination metadata.
+  useEffect(() => {
+    const requestId = ++productsRequestRef.current;
+    const isLatest = () => requestId === productsRequestRef.current;
 
-      // Fetch offers for all products
-      const offersPromises = products.map(async (product) => {
-        const offers = { productOffer: null, categoryOffer: null };
+    const loadProducts = async () => {
+      try {
+        const response = await axiosInstance.get("/shop/products", {
+          params: {
+            page: requestedPage,
+            limit: PRODUCTS_PER_PAGE,
+            search: debouncedQuery || undefined,
+            sortBy: filters.sortBy || undefined,
+            brands: filters.brands,
+            categories: filters.categories,
+          },
+        });
+        if (!isLatest()) return;
 
-        if (product.offerId) {
-          try {
-            const productOfferResponse = await axiosInstance.get(
-              `/Offer/fetch/${product.offerId}`
-            );
-            offers.productOffer = productOfferResponse.data.offerData;
-          } catch (error) {
-            console.error("Error fetching product offer:", error);
-          }
-        }
+        const pageProducts = response.data.products;
+        const { productOffersMap, categoryOffersMap } =
+          await fetchOffersForProducts(pageProducts);
+        if (!isLatest()) return;
 
-        if (product.categoryId) {
-          try {
-            const categoryOfferResponse = await axiosInstance.get(
-              `/Offer/category/${product.categoryId}`
-            );
-            offers.categoryOffer = categoryOfferResponse.data.offerData;
-          } catch (error) {
-            console.error("Error fetching category offer:", error);
-          }
-        }
+        setProductOffers(productOffersMap);
+        setCategoryOffers(categoryOffersMap);
+        setProducts(pageProducts);
+        setPagination(response.data.pagination);
+        setError(null);
+      } catch (err) {
+        if (!isLatest()) return;
+        console.error("Error fetching data:", err);
+        setError("Error fetching products");
+      } finally {
+        if (isLatest()) setLoading(false);
+      }
+    };
 
-        return {
-          productId: product._id,
-          offers,
-        };
-      });
+    loadProducts();
+  }, [debouncedQuery, filters, requestedPage]);
 
-      const offersResults = await Promise.all(offersPromises);
+  // Wishlist hearts use the logged-in user's full wishlist.
+  useEffect(() => {
+    if (!userId) return;
 
-      // Create maps of offers
-      const productOffersMap = {};
-      const categoryOffersMap = {};
-      offersResults.forEach((result) => {
-        productOffersMap[result.productId] = result.offers.productOffer;
-        categoryOffersMap[result.productId] = result.offers.categoryOffer;
-      });
-
-      setProductOffers(productOffersMap);
-      setCategoryOffers(categoryOffersMap);
-      setProducts(products);
-
-      // Fetch wishlist if user is logged in
-      if (userId) {
+    const fetchWishlistMap = async () => {
+      try {
         const wishlistResponse = await axiosInstance.get(`/wishlist/${userId}`);
         const wishlistItems = wishlistResponse.data.wishlist?.product || [];
 
@@ -138,45 +204,13 @@ const ProductPage = () => {
           newWishlistMap[item.productId._id] = true;
         });
         setWishlistMap(newWishlistMap);
+      } catch (err) {
+        console.error("Error fetching wishlist:", err);
       }
+    };
 
-      setLoading(false);
-    } catch (err) {
-      console.error("Error fetching data:", err);
-      setError("Error fetching products");
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
+    fetchWishlistMap();
   }, [userId]);
-
-  const fetchProducts = async (searchQuery = "") => {
-    setLoading(true);
-    try {
-      const response = await axiosInstance.get("/search/products", {
-        params: { query: searchQuery },
-      });
-      setProducts(response.data.data);
-      setLoading(false);
-    } catch (error) {
-      console.error("Error fetching products:", error);
-      setError("Error fetching products");
-      setLoading(false);
-    }
-  };
-
-  const debouncedFetchProducts = useCallback(
-    debounce((searchQuery) => {
-      fetchProducts(searchQuery);
-    }, 500), // 500ms debounce delay
-    []
-  );
-
-  useEffect(() => {
-    debouncedFetchProducts(query); // Fetch products dynamically
-  }, [query, debouncedFetchProducts]);
 
   // console.log(wishlistProducts)
   const navigate = useNavigate();
@@ -188,6 +222,10 @@ const ProductPage = () => {
 
     if(!userId){
       toast.error("Please Login to add to cart.")
+      return;
+    }
+    if (!variantId) {
+      toast.error("This product is currently unavailable");
       return;
     }
 
@@ -208,7 +246,7 @@ const ProductPage = () => {
       navigate("/cart");
     } catch (error) {
       console.log("Error in handle cart:", error || error.message);
-      toast.error("Product out of stock  ");
+      toast.error(error.response?.data?.message || "Product out of stock  ");
     }
   };
 
@@ -220,6 +258,10 @@ const ProductPage = () => {
     if (!userId) {
       toast.error("Please login to add items to wishlist");
       navigate("/login");
+      return;
+    }
+    if (!variantId) {
+      toast.error("This product is currently unavailable");
       return;
     }
 
@@ -299,6 +341,7 @@ const ProductPage = () => {
 
   console.log(products._id);
   console.log("products in ....", products);
+
   return (
     <div className="bg-black min-h-screen text-white py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
@@ -308,13 +351,17 @@ const ProductPage = () => {
         <FilterComponent
           isOpen={isFilterOpen}
           setIsOpen={setIsFilterOpen}
-          setProducts={setProducts}
+          onApplyFilters={setFilters}
         />
+
+        {products.length === 0 && (
+          <p className="text-center text-gray-400">No products found.</p>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           
           {products.map((product) => {
-            const { discountedPrice, originalPrice, savings, discountPercent } =
+            const { discountedPrice, originalPrice, discountPercent } =
               calculateBestDiscount(
                 product.price,
                 productOffers[product._id],
@@ -354,10 +401,10 @@ const ProductPage = () => {
                   {discountPercent > 0 ? (
                     <div className="flex items-center space-x-2">
                       <span className="text-green-400 text-xl font-bold">
-                        ₹{discountedPrice.toFixed(2)}
+                        {formatCurrency(discountedPrice)}
                       </span>
                       <span className="text-gray-400 line-through">
-                        ₹{originalPrice.toFixed(2)}
+                        {formatCurrency(originalPrice)}
                       </span>
                       <Badge className="bg-red-500 text-white">
                         -{discountPercent}%
@@ -365,7 +412,7 @@ const ProductPage = () => {
                     </div>
                   ) : (
                     <span className="text-green-400 text-xl font-bold">
-                      ₹{originalPrice.toFixed(2)}
+                      {formatCurrency(originalPrice)}
                     </span>
                   )}
 
@@ -394,6 +441,8 @@ const ProductPage = () => {
             );
           })}
         </div>
+
+        <PaginationControls pagination={pagination} onPageChange={goToPage} />
       </div>
     </div>
   );

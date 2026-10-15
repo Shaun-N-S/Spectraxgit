@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Heart, Search, ShoppingCart, User } from "lucide-react";
+import { Heart, Menu, Search, ShoppingCart, User, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import axiosInstance from "@/axios/userAxios";
@@ -12,7 +12,7 @@ import { logoutUser } from "@/redux/userSlice";
 export default function Header() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
-  const [user, setUser] = useState(null); // Simulate user state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
   const location = useLocation();
@@ -50,7 +50,6 @@ export default function Header() {
         dispatch(logoutUser());
 
         console.log("User logged out successfully");
-        setUser(null);
         toast.success("Logged out successfully");
 
         // Navigate to login page
@@ -77,13 +76,40 @@ export default function Header() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Close the mobile menu after navigating (link click or search submit).
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname, location.search]);
+
   return (
     <header className="bg-black text-white relative z-10">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
-          <Link to="/" className="text-2xl font-bold tracking-tighter">
-            SPECTRAX
-          </Link>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-white md:hidden"
+              onClick={() => setIsMobileMenuOpen((open) => !open)}
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="mobile-menu"
+            >
+              {isMobileMenuOpen ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
+              <span className="sr-only">
+                {isMobileMenuOpen ? "Close menu" : "Open menu"}
+              </span>
+            </Button>
+            <Link
+              to="/"
+              className="text-xl sm:text-2xl font-bold tracking-tighter"
+            >
+              SPECTRAX
+            </Link>
+          </div>
 
           <nav className="hidden md:flex items-center space-x-8">
             <Link
@@ -107,7 +133,7 @@ export default function Header() {
             </Link> */}
           </nav>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-1 sm:space-x-4">
             <form onSubmit={handleSearch} className="relative hidden sm:block">
               <Input
                 type="search"
@@ -127,7 +153,7 @@ export default function Header() {
               </Button>
             </form>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-1 sm:space-x-4">
               <Button
                 variant="ghost"
                 size="icon"
@@ -197,6 +223,46 @@ export default function Header() {
             </div>
           </div>
         </div>
+
+        {isMobileMenuOpen && (
+          <div
+            id="mobile-menu"
+            className="md:hidden border-t border-white border-opacity-20 py-3 space-y-3"
+          >
+            <nav className="flex flex-col">
+              <Link
+                to="/"
+                className="py-2 text-sm font-medium hover:text-gray-300 transition-colors"
+              >
+                HOME
+              </Link>
+              <Link
+                to="/shop"
+                className="py-2 text-sm font-medium hover:text-gray-300 transition-colors"
+              >
+                SHOP
+              </Link>
+            </nav>
+            <form onSubmit={handleSearch} className="relative sm:hidden">
+              <Input
+                type="search"
+                placeholder="Search..."
+                className="w-full bg-black text-white pr-8 border-white border-opacity-20"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <Button
+                type="submit"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-0 h-full px-3 text-white hover:text-gray-300"
+              >
+                <Search className="h-4 w-4" />
+                <span className="sr-only">Search</span>
+              </Button>
+            </form>
+          </div>
+        )}
       </div>
     </header>
   );

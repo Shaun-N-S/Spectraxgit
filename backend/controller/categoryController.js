@@ -1,4 +1,6 @@
 const Category = require('../models/categorySchema'); // Assuming Category model is in 'models' folder
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { COMMON_MESSAGES, CATEGORY_MESSAGES } = require('../constants/messages');
 
 // Controller to add a new category
 const addCategory = async (req, res) => {
@@ -6,14 +8,14 @@ const addCategory = async (req, res) => {
     const { name, description, status } = req.body;
 
     if (typeof name !== "string" || !name.trim()) {
-      return res.status(400).json({ message: "Invalid name" });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COMMON_MESSAGES.INVALID_NAME });
     }
 
     // Check if the category name already exists
     const existingCategory = await Category.findOne({ name });
     if (existingCategory) {
       // console.log('Category already exists')
-      return res.status(400).json({ message: 'Category already exists' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: CATEGORY_MESSAGES.ALREADY_EXISTS });
       
     }
 
@@ -21,10 +23,10 @@ const addCategory = async (req, res) => {
     const newCategory = new Category({ name, description, status });
     await newCategory.save();
 
-    return res.status(201).json({ message: 'Category added successfully', category: newCategory });
+    return res.status(HTTP_STATUS.CREATED).json({ message: CATEGORY_MESSAGES.ADDED, category: newCategory });
   } catch (error) {
     console.error('Error adding category:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE });
   }
 };
 
@@ -40,7 +42,7 @@ const getAllCategories = async (req, res) => {
         Category.find().skip(skip).limit(limit),
         Category.countDocuments()
       ]);
-      return res.status(200).json({
+      return res.status(HTTP_STATUS.OK).json({
         categories,
         total,
         page,
@@ -48,7 +50,7 @@ const getAllCategories = async (req, res) => {
       });
     } catch (error) {
       console.error('Error fetching categories:', error);
-      return res.status(500).json({ message: 'Internal Server Error' });
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE });
     }
   };
 
@@ -57,10 +59,10 @@ const getAllCategories = async (req, res) => {
     try {
       // Fetch only categories that are active
       const categories = await Category.find({status:'active'});
-      return res.status(200).json({ categories });
+      return res.status(HTTP_STATUS.OK).json({ categories });
     } catch (error) {
       console.error('Error fetching categories:', error);
-      return res.status(500).json({ message: 'Internal Server Error' });
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE });
     }
   };
 
@@ -104,13 +106,13 @@ const getAllCategories = async (req, res) => {
       );
   
       if (!category) {
-        return res.status(404).json({ message: 'Category not found' });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: CATEGORY_MESSAGES.NOT_FOUND });
       }
   
-      return res.status(200).json({ message: `Category status updated to ${status}`, category });
+      return res.status(HTTP_STATUS.OK).json({ message: CATEGORY_MESSAGES.statusUpdated(status), category });
     } catch (error) {
       console.error('Error toggling category status:', error);
-      return res.status(500).json({ message: 'Internal Server Error' });
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE });
     }
   };
   
@@ -131,12 +133,12 @@ const getAllCategories = async (req, res) => {
       const category = await Category.findById(categoryId);
   
       if (!category) {
-        return res.status(404).json({ message: 'Category not found' });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: CATEGORY_MESSAGES.NOT_FOUND });
       }
   
       // Check if the category is active (not soft-deleted)
       if (category.status === 'inactive') {
-        return res.status(400).json({ message: 'Cannot edit an inactive category' });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: CATEGORY_MESSAGES.CANNOT_EDIT_INACTIVE });
       }
   
       // Update the category details
@@ -146,13 +148,13 @@ const getAllCategories = async (req, res) => {
       // Save the updated category to the database
       const updatedCategory = await category.save();
   
-      return res.status(200).json({
-        message: 'Category updated successfully',
+      return res.status(HTTP_STATUS.OK).json({
+        message: CATEGORY_MESSAGES.UPDATED,
         category: updatedCategory,
       });
     } catch (error) {
       console.error('Error updating category:', error);
-      return res.status(500).json({ message: 'Internal server error' });
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR });
     }
   };
   

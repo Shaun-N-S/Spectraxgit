@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import PropTypes from 'prop-types';
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,7 @@ import { Package, Truck, CreditCard, Calendar, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import axiosInstance from '@/axios/userAxios';
 import { toast } from 'react-hot-toast';
+import { formatCurrency } from '@/lib/utils';
 import { ShoppingBag } from 'lucide-react';
 import { downloadInvoice } from '../CheckoutPage/InvoiceDownload';
 
@@ -87,9 +89,16 @@ const ReturnDialog = ({ isOpen, onClose, onSubmit }) => {
 };
 
 
+ReturnDialog.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSubmit: PropTypes.func.isRequired,
+};
+
 const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
-  if (!order) return null;
+  // Hooks must run on every render, before the early return below.
   const [isReturnDialogOpen, setIsReturnDialogOpen] = useState(false);
+  if (!order) return null;
 
 
 
@@ -113,7 +122,7 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
   
       if (response.data.wallet) {
         const refundAmount = response.data.wallet.lastTransaction.amount;
-        toast.success(`Order cancelled and ₹${refundAmount.toFixed(2)} refunded to wallet`);
+        toast.success(`Order cancelled and ${formatCurrency(refundAmount)} refunded to wallet`);
       } else {
         toast.success('Order cancelled successfully');
       }
@@ -142,7 +151,9 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
       }
   
       // Create a new Razorpay order
+      // The server takes the amount from this order
       const retryResponse = await axiosInstance.post("/create-razorpay-order", {
+        orderId: order._id,
         amount: order.finalAmount,
         currency: "INR",
       });
@@ -166,7 +177,10 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
   
             // ✅ Update order status to "Completed"
             await axiosInstance.post(`/order/status/${order._id}`, {
-              status: "Processing"
+              status: "Processing",
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
             });
   
             toast.success("Payment successful, order updated to Completed.");
@@ -214,7 +228,7 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
 
       if (response.data.wallet) {
         const refundAmount = response.data.wallet.lastTransaction.amount;
-        toast.success(`Return processed and ₹${refundAmount.toFixed(2)} refunded to wallet`);
+        toast.success(`Return processed and ${formatCurrency(refundAmount)} refunded to wallet`);
       } else {
         toast.success('Return processed successfully');
       }
@@ -252,17 +266,6 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
       
       downloadInvoice(formattedOrder);
     }
-  };
-
-  // Helper function to safely display variant details
-  const renderVariantValue = (value) => {
-    if (!value) return '';
-    if (typeof value === 'string') return value;
-    if (typeof value === 'object') {
-      // If the value is an object with name or value property
-      return value.name || value.value || JSON.stringify(value);
-    }
-    return String(value);
   };
 
   // Calculate the subtotal
@@ -312,7 +315,7 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
                       Quantity: {product.quantity || 1}
                     </p>
                     <p className="text-sm text-gray-300">
-                      Price: ₹{product.price || 0}
+                      Price: {formatCurrency(product.price)}
                     </p>
                   </div>
                 </div>
@@ -329,7 +332,7 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
               </h3>
               <div className="space-y-2">
                 <p className="text-gray-300">Coupon Code: {order.coupon.code}</p>
-                <p className="text-gray-300">Discount Amount: ₹{order.coupon.discountAmount}</p>
+                <p className="text-gray-300">Discount Amount: {formatCurrency(order.coupon.discountAmount)}</p>
               </div>
             </div>
           )}
@@ -373,19 +376,19 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-300">Subtotal</span>
-                  <span className="font-medium">₹{subtotal}</span>
+                  <span className="font-medium">{formatCurrency(subtotal)}</span>
                 </div>
                 {order.coupon && (
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300">Discount</span>
                     <span className="font-medium text-green-500">
-                      -₹{discountAmount}
+                      -{formatCurrency(discountAmount)}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between items-center pt-2 border-t border-gray-600">
                   <span className="text-gray-300">Final Amount</span>
-                  <span className="font-medium text-lg">₹{finalAmount}</span>
+                  <span className="font-medium text-lg">{formatCurrency(finalAmount)}</span>
                 </div>
               </div>
             </div>
@@ -443,6 +446,43 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
       </DialogContent>
     </Dialog>
   );
+};
+
+OrderDetailsBox.propTypes = {
+  // null until the customer selects an order (the component renders nothing)
+  order: PropTypes.shape({
+    _id: PropTypes.string,
+    orderStatus: PropTypes.string,
+    orderDate: PropTypes.string,
+    createdAt: PropTypes.string,
+    paymentMethod: PropTypes.string,
+    totalAmount: PropTypes.number,
+    finalAmount: PropTypes.number,
+    customerName: PropTypes.string,
+    customerEmail: PropTypes.string,
+    products: PropTypes.arrayOf(
+      PropTypes.shape({
+        name: PropTypes.string,
+        quantity: PropTypes.number,
+        price: PropTypes.number,
+        variant: PropTypes.object,
+      })
+    ),
+    shippingAddress: PropTypes.shape({
+      address: PropTypes.string,
+      city: PropTypes.string,
+      state: PropTypes.string,
+      country: PropTypes.string,
+      pinCode: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    }),
+    coupon: PropTypes.shape({
+      code: PropTypes.string,
+      discountAmount: PropTypes.number,
+    }),
+  }),
+  open: PropTypes.bool.isRequired,
+  onOpenChange: PropTypes.func.isRequired,
+  onStatusUpdate: PropTypes.func.isRequired,
 };
 
 export default OrderDetailsBox;

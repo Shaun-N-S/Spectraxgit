@@ -130,7 +130,7 @@ const orderSchema = new mongoose.Schema({
   returnDetails: {
     reason: {
       type: String,
-      enum: ['Wrong Item', 'Defective Product', 'Not as Described', 'Other'],
+      enum: ['Wrong Item', 'Defective Product', 'Size/Fit Issue', 'Not as Described', 'Other'],
       required: function() { return this.orderStatus === 'Returned'; }
     },
     description: {

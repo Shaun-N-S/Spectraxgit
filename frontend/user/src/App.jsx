@@ -1,4 +1,3 @@
-import React from 'react'
 import SignUp from './components/signup/SignUp'
 import Login from './components/login/Login'
 import OtpVerification from './components/otp/otp'

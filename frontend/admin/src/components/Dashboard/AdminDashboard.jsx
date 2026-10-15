@@ -1,6 +1,4 @@
-import React, { useState } from "react"
 import { motion } from "framer-motion"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import SalesReport from "./SalesReport"
 import TopSellingItems from './TopSellingItems';
 
@@ -15,7 +13,6 @@ import TopSellingItems from './TopSellingItems';
 // ]
 
 const AdminDashboard = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-white">
@@ -24,7 +21,7 @@ const AdminDashboard = () => {
         {/* Stats Grid */}
         {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {[
-            { title: "Total Sales", value: "$12,426", trend: "+8%" },
+            { title: "Total Sales", value: "₹12,426", trend: "+8%" },
             { title: "Active Users", value: "2,128", trend: "+23%" },
             { title: "New Orders", value: "48", trend: "+12%" },
             { title: "Pending Delivery", value: "6", trend: "-2%" },

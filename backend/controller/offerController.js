@@ -1,6 +1,8 @@
 const Offer = require('../models/offerSchema');
 const Product = require('../models/productSchema');
 const Category = require('../models/categorySchema');
+const { HTTP_STATUS } = require('../constants/httpStatus');
+const { COMMON_MESSAGES, CATEGORY_MESSAGES, OFFER_MESSAGES } = require('../constants/messages');
 
 const addOffer = async (req, res) => {
     try {
@@ -8,12 +10,12 @@ const addOffer = async (req, res) => {
 
         // Validate required fields
         if (!name || !discountPercent || !startDate || !endDate || !targetId || !targetType) {
-            return res.status(400).json({ message: "All fields are required." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COMMON_MESSAGES.ALL_FIELDS_REQUIRED_WITH_PERIOD });
         }
 
         // Validate discount percentage
         if (discountPercent < 0 || discountPercent > 100) {
-            return res.status(400).json({ message: "Discount percentage must be between 0 and 100." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: OFFER_MESSAGES.DISCOUNT_OUT_OF_RANGE });
         }
 
         // Determine the model based on the target type
@@ -22,7 +24,7 @@ const addOffer = async (req, res) => {
         // Check if the target (product or category) exists
         const target = await Model.findById(targetId);
         if (!target) {
-            return res.status(404).json({ message: `${targetType} not found.` });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: OFFER_MESSAGES.targetNotFound(targetType) });
         }
 
         // Create the offer
@@ -43,14 +45,14 @@ const addOffer = async (req, res) => {
             { new: true } // Return the updated document
         );
 
-        res.status(201).json({
+        res.status(HTTP_STATUS.CREATED).json({
             success: true,
-            message: "Offer added successfully.",
+            message: OFFER_MESSAGES.ADDED,
             offer: newOffer,
         });
     } catch (error) {
         console.error("Error in adding offer:", error);
-        res.status(500).json({ message: "Error in adding offer." });
+        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: OFFER_MESSAGES.ADD_FAILED });
     }
 };
 
@@ -67,11 +69,11 @@ const allOffers = async(req,res)=>{
             Offer.countDocuments()
         ]);
         if(!offersData){
-            return res.status(404).json({message:"No offer found."});
+            return res.status(HTTP_STATUS.NOT_FOUND).json({message:OFFER_MESSAGES.NONE_FOUND});
         };
 
-        res.status(200).json({
-            message:"Offers fetched successfully.",
+        res.status(HTTP_STATUS.OK).json({
+            message:OFFER_MESSAGES.LIST_FETCHED,
             offersData,
             total,
             page,
@@ -80,7 +82,7 @@ const allOffers = async(req,res)=>{
 
     } catch (error) {
         console.log("Error in fetching offers:",error);
-        return res.status(500).json({message:"Error in fetching offers."});
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({message:OFFER_MESSAGES.LIST_FETCH_FAILED});
     }
 }
 
@@ -91,13 +93,13 @@ const deleteOffers = async (req, res) => {
 
         
         if (!id) {
-            return res.status(400).json({ message: "Offer ID is required." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: OFFER_MESSAGES.ID_REQUIRED });
         }
 
         
         const offer = await Offer.findById(id);
         if (!offer) {
-            return res.status(404).json({ message: "Offer not found." });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: OFFER_MESSAGES.NOT_FOUND_WITH_PERIOD });
         }
 
        
@@ -113,13 +115,13 @@ const deleteOffers = async (req, res) => {
         
         await Offer.findByIdAndDelete(id);
 
-        res.status(200).json({
+        res.status(HTTP_STATUS.OK).json({
             success: true,
-            message: "Offer deleted successfully.",
+            message: OFFER_MESSAGES.DELETED,
         });
     } catch (error) {
         console.error("Error in deleting offers:", error);
-        res.status(500).json({ message: "Error in deleting offers." });
+        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: OFFER_MESSAGES.DELETE_FAILED });
     }
 };
 
@@ -129,32 +131,32 @@ const updateOffer = async (req, res) => {
 
         // Validate if ID is provided
         if (!id) {
-            return res.status(400).json({ message: "Offer ID is required." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: OFFER_MESSAGES.ID_REQUIRED });
         }
 
         const { name, discountPercent, startDate, endDate, targetId, targetType } = req.body;
 
         // Validate required fields
         if (!name || !discountPercent || !startDate || !endDate || !targetId || !targetType) {
-            return res.status(400).json({ message: "All fields are required." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: COMMON_MESSAGES.ALL_FIELDS_REQUIRED_WITH_PERIOD });
         }
 
         // Validate discount percentage
         if (discountPercent < 0 || discountPercent > 100) {
-            return res.status(400).json({ message: "Discount percentage must be between 0 and 100." });
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: OFFER_MESSAGES.DISCOUNT_OUT_OF_RANGE });
         }
 
         // Find the existing offer
         const existingOffer = await Offer.findById(id);
         if (!existingOffer) {
-            return res.status(404).json({ message: "Offer not found." });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: OFFER_MESSAGES.NOT_FOUND_WITH_PERIOD });
         }
 
         // Check if the target (product or category) exists
         const Model = targetType === 'product' ? Product : Category;
         const target = await Model.findById(targetId);
         if (!target) {
-            return res.status(404).json({ message: `${targetType} not found.` });
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: OFFER_MESSAGES.targetNotFound(targetType) });
         }
 
         // If the target ID or type has changed, update the old target's offer reference
@@ -177,14 +179,14 @@ const updateOffer = async (req, res) => {
             { new: true } // Return the updated document
         );
 
-        res.status(200).json({
+        res.status(HTTP_STATUS.OK).json({
             success: true,
-            message: "Offer updated successfully.",
+            message: OFFER_MESSAGES.UPDATED,
             offer: updatedOffer,
         });
     } catch (error) {
         console.error("Error in updating offer:", error);
-        res.status(500).json({ message: "Error in updating offer." });
+        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: OFFER_MESSAGES.UPDATE_FAILED });
     }
 };
 
@@ -194,19 +196,19 @@ const fetchOfferById = async(req,res)=>{
         
         const {id} = req.params;
         if(!id){
-            return res.status(400).json({message:"Offer ID is required."});
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({message:OFFER_MESSAGES.ID_REQUIRED});
         }
 
         const offerData = await Offer.findById(id);
         if(!offerData){
-            return res.status(404).json({message:"Offer not found."});
+            return res.status(HTTP_STATUS.NOT_FOUND).json({message:OFFER_MESSAGES.NOT_FOUND_WITH_PERIOD});
         }
 
-        return res.status(200).json({message:"Offer fetched successfully.",offerData});
+        return res.status(HTTP_STATUS.OK).json({message:OFFER_MESSAGES.FETCHED,offerData});
 
     } catch (error) {
         console.log("Error in fetching offer by Id:",error);
-        return res.status(500).json({message:"Error in fetching offer by Id."});
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({message:OFFER_MESSAGES.FETCH_BY_ID_FAILED});
     }
 }
 
@@ -217,18 +219,18 @@ const fetchOfferOfCategory= async (req, res) => {
 
         const category = await Category.findById(id);
         if (!category) {
-          return res.status(404).json({message: 'Category not found'});
+          return res.status(HTTP_STATUS.NOT_FOUND).json({message: CATEGORY_MESSAGES.NOT_FOUND});
         }
   
         
         if (!category.offerId) {
-          return res.status(200).json({message: 'No offer associated with this category'});
+          return res.status(HTTP_STATUS.OK).json({message: OFFER_MESSAGES.NO_CATEGORY_OFFER});
         }
   
         
         const offer = await Offer.findById(category.offerId);
         if (!offer) {
-          return res.status(404).json({ message: 'Offer not found'});
+          return res.status(HTTP_STATUS.NOT_FOUND).json({ message: OFFER_MESSAGES.NOT_FOUND});
         }
   
         
@@ -239,9 +241,9 @@ const fetchOfferOfCategory= async (req, res) => {
           new Date(offer.endDate) >= currentDate;
   
         // Send a successful response
-        return res.status(200).json({
+        return res.status(HTTP_STATUS.OK).json({
           success: true,
-          message: 'Category offer fetched successfully',
+          message: OFFER_MESSAGES.CATEGORY_OFFER_FETCHED,
           offerData: {
             ...offer.toObject(),
             isCurrentlyActive: isOfferActive,
@@ -250,9 +252,9 @@ const fetchOfferOfCategory= async (req, res) => {
   
       } catch (error) {
         console.error('Error in fetchCategoryOffer:', error);
-        return res.status(500).json({
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
           success: false,
-          message: 'Internal server error',
+          message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR,
           error: error.message,
         });
       }

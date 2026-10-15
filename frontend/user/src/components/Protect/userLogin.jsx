@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import PropTypes from 'prop-types';
 import { Navigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import axiosInstance from '../../axios/userAxios';
@@ -44,5 +45,9 @@ function ProtectHome({ children }) {
 
   return isAuthenticated ? children : <Navigate to="/login" />;
 }
+
+ProtectHome.propTypes = {
+  children: PropTypes.node.isRequired,
+};
 
 export default ProtectHome;
