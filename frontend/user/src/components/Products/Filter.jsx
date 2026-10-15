@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import axiosInstance from "../../axios/userAxios"
 
-const FilterComponent = ({ isOpen, setIsOpen, setProducts }) => {
+const FilterComponent = ({ isOpen, setIsOpen, onApplyFilters }) => {
   const [brands, setBrands] = useState([])
   const [categories, setCategories] = useState([])
   const [selectedSort, setSelectedSort] = useState("");
@@ -54,23 +54,15 @@ const FilterComponent = ({ isOpen, setIsOpen, setProducts }) => {
     );
   };
 
-  const handleApplyFilter = async () => {
-    try {
-      const response = await axiosInstance.get("/filterProduct", {
-        params: {
-          sortBy: selectedSort,
-          brands: selectedBrands,
-          categories: selectedCategories,
-          // minPrice: priceRange[0],
-          // maxPrice: priceRange[1],
-        },
-      });
-      setProducts(response.data)
-      
-      setIsOpen(false)
-    } catch (error) {
-      console.log('Error applying filters:', error)
-    }
+  // The shop fetches the filtered page itself, so a filter can be combined
+  // with the search and paginated by the backend.
+  const handleApplyFilter = () => {
+    onApplyFilters({
+      sortBy: selectedSort,
+      brands: selectedBrands,
+      categories: selectedCategories,
+    });
+    setIsOpen(false)
   }
 
   return (
@@ -208,7 +200,7 @@ const FilterComponent = ({ isOpen, setIsOpen, setProducts }) => {
 FilterComponent.propTypes = {
   isOpen: PropTypes.bool,
   setIsOpen: PropTypes.func,
-  setProducts: PropTypes.func,
+  onApplyFilters: PropTypes.func,
 };
 
 export default FilterComponent;

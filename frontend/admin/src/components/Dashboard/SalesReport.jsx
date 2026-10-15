@@ -9,6 +9,7 @@ import { CalendarIcon } from "lucide-react"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import axiosInstance from "@/axios/adminAxios"
 import { toast } from "react-hot-toast"
+import { formatCurrency, formatCurrencyForPdf } from "@/lib/utils"
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -170,9 +171,9 @@ const SalesReport = () => {
     };
     
     // Draw summary boxes
-    drawStatBox('Total Sales', `₹${totalSales.toLocaleString()}`, 14, 45);
+    drawStatBox('Total Sales', formatCurrencyForPdf(totalSales), 14, 45);
     drawStatBox('Total Orders', totalOrders.toLocaleString(), 64, 45);
-    drawStatBox('Total Discount', `₹${totalDiscount.toLocaleString()}`, 114, 45);
+    drawStatBox('Total Discount', formatCurrencyForPdf(totalDiscount), 114, 45);
     drawStatBox('Products Sold', totalProductsSold.toLocaleString(), 164, 45);
     
     // Add some spacing before the table
@@ -180,9 +181,9 @@ const SalesReport = () => {
     
     const tableRows = salesData.map(row => [
       row.date,
-      `₹${row.totalSales.toLocaleString()}`,
+      formatCurrencyForPdf(row.totalSales),
       row.totalOrders,
-      `₹${row.totalDiscount.toLocaleString()}`,
+      formatCurrencyForPdf(row.totalDiscount),
       row.totalProductsSold
     ]);
     
@@ -241,9 +242,9 @@ const SalesReport = () => {
     const worksheet = XLSX.utils.json_to_sheet(
       salesData.map((row) => ({
         Date: row.date,
-        'Total Sales': `₹${row.totalSales.toLocaleString()}`,
+        'Total Sales': formatCurrency(row.totalSales),
         'Total Orders': row.totalOrders,
-        'Total Discount': `₹${row.totalDiscount.toLocaleString()}`,
+        'Total Discount': formatCurrency(row.totalDiscount),
         'Products Sold': row.totalProductsSold,
       }))
     );
@@ -338,7 +339,7 @@ const SalesReport = () => {
       <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-blue-100 p-4 rounded-lg">
           <p className="text-lg font-medium">Total Sales</p>
-          <p className="text-2xl font-bold">₹{totalSales.toLocaleString()}</p>
+          <p className="text-2xl font-bold">{formatCurrency(totalSales)}</p>
         </div>
         <div className="bg-green-100 p-4 rounded-lg">
           <p className="text-lg font-medium">Total Orders</p>
@@ -346,7 +347,7 @@ const SalesReport = () => {
         </div>
         <div className="bg-red-100 p-4 rounded-lg">
           <p className="text-lg font-medium">Total Discount</p>
-          <p className="text-2xl font-bold">₹{totalDiscount.toLocaleString()}</p>
+          <p className="text-2xl font-bold">{formatCurrency(totalDiscount)}</p>
         </div>
         <div className="bg-purple-100 p-4 rounded-lg">
           <p className="text-lg font-medium">Products Sold</p>
@@ -388,9 +389,9 @@ const SalesReport = () => {
               {salesData.map((row) => (
                 <TableRow key={row.date}>
                   <TableCell>{row.date}</TableCell>
-                  <TableCell>₹{row.totalSales.toLocaleString()}</TableCell>
+                  <TableCell>{formatCurrency(row.totalSales)}</TableCell>
                   <TableCell>{row.totalOrders}</TableCell>
-                  <TableCell>₹{row.totalDiscount.toLocaleString()}</TableCell>
+                  <TableCell>{formatCurrency(row.totalDiscount)}</TableCell>
                   <TableCell>{row.totalProductsSold}</TableCell>
                 </TableRow>
               ))}

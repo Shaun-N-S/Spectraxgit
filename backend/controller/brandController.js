@@ -126,7 +126,6 @@ const toggleBrandStatus = async (req, res) => {
     try {
       const { id } = req.params;
       // console.log(id)
-      // Use a different variable name for the brand model
       const brandData = await Brand.findById(id);
   
       if (!brandData) {

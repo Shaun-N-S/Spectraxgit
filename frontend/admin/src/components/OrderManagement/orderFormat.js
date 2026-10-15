@@ -1,4 +1,4 @@
-import { formatCustomerName } from '@/lib/utils';
+import { formatCustomerName, formatCurrency as formatInr } from '@/lib/utils';
 
 const EMPTY = '—';
 
@@ -6,7 +6,7 @@ const EMPTY = '—';
 export const formatCurrency = (amount) => {
   const value = Number(amount);
   if (amount === null || amount === undefined || !Number.isFinite(value)) return EMPTY;
-  return `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  return formatInr(value);
 };
 
 export const formatDate = (dateString) => {

@@ -9,6 +9,7 @@ const Razorpay = require("razorpay"); // class itself, for the static validateWe
 const Wallet = require("../models/walletSchema");
 const crypto = require("crypto");
 const { HTTP_STATUS } = require("../constants/httpStatus");
+const { priceCartForCheckout, toPaise } = require("../utils/orderPricing");
 const {
   COMMON_MESSAGES,
   COUPON_MESSAGES,
@@ -17,48 +18,6 @@ const {
   PAYMENT_MESSAGES,
   WALLET_MESSAGES,
 } = require("../constants/messages");
-
-const validateOrderProducts = (products) => {
-  if (!Array.isArray(products) || products.length === 0) {
-    return ORDER_MESSAGES.PRODUCTS_REQUIRED;
-  }
-
-  for (const item of products) {
-    if (!item || typeof item !== "object") {
-      return ORDER_MESSAGES.INVALID_PRODUCT_ITEM;
-    }
-    if (!item.productId) {
-      return ORDER_MESSAGES.PRODUCT_ID_REQUIRED;
-    }
-    if (!item.variantId) {
-      return ORDER_MESSAGES.VARIANT_ID_REQUIRED;
-    }
-    if (
-      item.quantity === undefined ||
-      item.quantity === null ||
-      isNaN(item.quantity) ||
-      Number(item.quantity) <= 0
-    ) {
-      return ORDER_MESSAGES.INVALID_QUANTITY;
-    }
-    if (!item.variant || typeof item.variant !== "object") {
-      return ORDER_MESSAGES.VARIANT_DETAILS_REQUIRED;
-    }
-    if (
-      item.variant.price === undefined ||
-      item.variant.price === null ||
-      isNaN(item.variant.price) ||
-      Number(item.variant.price) < 0
-    ) {
-      return ORDER_MESSAGES.INVALID_VARIANT_PRICE;
-    }
-
-    item.quantity = Number(item.quantity);
-    item.variant.price = Number(item.variant.price);
-  }
-
-  return null;
-};
 
 const reserveStockForItems = async (products, session = null) => {
   const reservedItems = [];
@@ -112,40 +71,55 @@ const releaseStockForItems = async (products, session = null) => {
   );
 };
 
-const markRazorpayPaymentCompleted = async (
-  razorpayOrderId,
-  paymentId,
-  signature,
-) => {
-  const order = await Order.findOne({ "razorpay.orderId": razorpayOrderId });
+// Payments are always charged in Indian Rupees; the client cannot pick another
+// currency for a rupee amount.
+const PAYMENT_CURRENCY = "INR";
 
-  if (!order) {
-    return null;
-  }
-
-  if (
-    order.paymentStatus === "Completed" &&
-    order.razorpay?.paymentId === paymentId
-  ) {
-    return order;
-  }
-
-  order.razorpay.paymentId = paymentId;
-  order.razorpay.signature = signature;
-  order.paymentStatus = "Completed";
-  await order.save();
-
-  return order;
-};
-
+// The amount is always computed on the server: from the user's cart (with
+// the coupon) at checkout, or from the stored total when retrying a failed
+// order's payment. A client-sent amount is ignored.
 const createRazorpayOrder = async (req, res) => {
   try {
-    const { amount, currency = "INR" } = req.body;
+    const userId = req.user.id;
+    const { orderId, couponCode } = req.body;
+    const notes = { userId: String(userId) };
+    let rupees;
+
+    if (orderId !== undefined && orderId !== null) {
+      const order = mongoose.Types.ObjectId.isValid(orderId)
+        ? await Order.findOne({ _id: orderId, userId, paymentStatus: "Failed" })
+        : null;
+      if (!order) {
+        return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
+          error: ORDER_MESSAGES.NOT_FOUND,
+        });
+      }
+      rupees = order.finalAmount;
+      notes.orderId = String(order._id);
+    } else {
+      const priced = await priceCartForCheckout({ userId, couponCode });
+      if (priced.error) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          error: priced.error,
+        });
+      }
+      rupees = priced.finalAmount;
+    }
+
+    if (!Number.isFinite(rupees) || rupees <= 0) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        error: PAYMENT_MESSAGES.INVALID_AMOUNT,
+      });
+    }
 
     const options = {
-      amount: Math.round(amount * 100), // Razorpay expects amount in paise
-      currency,
+      amount: toPaise(rupees), // Razorpay expects amount in paise
+      currency: PAYMENT_CURRENCY,
       receipt: `receipt_${Date.now()}`,
+      notes,
     };
 
     const order = await razorpay.orders.create(options);
@@ -163,19 +137,83 @@ const createRazorpayOrder = async (req, res) => {
   }
 };
 
+// Confirms a Razorpay payment on the server before an order is treated as
+// paid: the signature proves Razorpay issued the payment for that Razorpay
+// order, and the Razorpay order itself (fetched from Razorpay) must be in INR,
+// for exactly the expected amount, created for this user (and this order when
+// retrying), and not already attached to another paid order.
+// Returns null when the payment is confirmed, otherwise an error message.
+const confirmRazorpayPayment = async ({
+  razorpayOrderId,
+  razorpayPaymentId,
+  razorpaySignature,
+  expectedPaise,
+  userId,
+  orderId = null,
+}) => {
+  const ids = [razorpayOrderId, razorpayPaymentId, razorpaySignature];
+  if (!ids.every((value) => typeof value === "string" && value.length > 0)) {
+    return PAYMENT_MESSAGES.NOT_VERIFIED;
+  }
+  const expectedSignature = crypto
+    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+    .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+    .digest("hex");
+  if (
+    expectedSignature.length !== razorpaySignature.length ||
+    !crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(razorpaySignature))
+  ) {
+    return PAYMENT_MESSAGES.NOT_VERIFIED;
+  }
+
+  const razorpayOrder = await razorpay.orders.fetch(razorpayOrderId);
+  if (
+    !razorpayOrder ||
+    razorpayOrder.currency !== PAYMENT_CURRENCY ||
+    Number(razorpayOrder.amount) !== expectedPaise
+  ) {
+    return PAYMENT_MESSAGES.AMOUNT_MISMATCH;
+  }
+  if (String(razorpayOrder.notes?.userId) !== String(userId)) {
+    return PAYMENT_MESSAGES.NOT_VERIFIED;
+  }
+  if (orderId && String(razorpayOrder.notes?.orderId) !== String(orderId)) {
+    return PAYMENT_MESSAGES.NOT_VERIFIED;
+  }
+
+  const alreadyUsed = await Order.findOne({
+    "razorpay.orderId": razorpayOrderId,
+    paymentStatus: "Completed",
+    ...(orderId ? { _id: { $ne: orderId } } : {}),
+  });
+  if (alreadyUsed) {
+    return PAYMENT_MESSAGES.ALREADY_USED;
+  }
+  return null;
+};
+
+// Checks a Razorpay payment signature for the client. It never changes an
+// order: orders are only marked paid by place-order and by the failed-payment
+// retry, which also confirm the amount, user and order with Razorpay.
 const verifyRazorpayPayment = async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
       req.body;
+    const fields = [razorpay_order_id, razorpay_payment_id, razorpay_signature];
+    if (!fields.every((value) => typeof value === "string" && value.length > 0)) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        error: PAYMENT_MESSAGES.VERIFICATION_FAILED,
+      });
+    }
 
-    // Verify signature
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(body.toString())
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
-
-    const isAuthentic = expectedSignature === razorpay_signature;
+    const isAuthentic =
+      expectedSignature.length === razorpay_signature.length &&
+      crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(razorpay_signature));
 
     if (!isAuthentic) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -183,12 +221,6 @@ const verifyRazorpayPayment = async (req, res) => {
         error: PAYMENT_MESSAGES.VERIFICATION_FAILED,
       });
     }
-
-    await markRazorpayPaymentCompleted(
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature,
-    );
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
@@ -203,6 +235,11 @@ const verifyRazorpayPayment = async (req, res) => {
   }
 };
 
+// Razorpay webhook. A payment.captured event only completes a payment-failed
+// order's retry payment: the Razorpay order must name that order and its
+// user, and the captured amount must equal the order total. Checkout payments
+// are completed by place-order itself. Completion is guarded, so replays and
+// races with the retry endpoint complete an order at most once.
 const handleRazorpayWebhook = async (req, res) => {
   try {
     const signature = req.headers["x-razorpay-signature"];
@@ -231,19 +268,32 @@ const handleRazorpayWebhook = async (req, res) => {
 
     if (event.event === "payment.captured") {
       const payment = event.payload?.payment?.entity;
-      const razorpayOrderId = payment?.order_id;
-      const paymentId = payment?.id;
+      if (payment?.order_id && payment?.id) {
+        const razorpayOrder = await razorpay.orders.fetch(payment.order_id);
+        const orderId = razorpayOrder?.notes?.orderId;
+        const order =
+          orderId && mongoose.Types.ObjectId.isValid(orderId)
+            ? await Order.findById(orderId)
+            : null;
+        const expectedPaise = order ? toPaise(order.finalAmount) : null;
 
-      if (razorpayOrderId && paymentId) {
-        const order = await markRazorpayPaymentCompleted(
-          razorpayOrderId,
-          paymentId,
-          null,
-        );
-
-        if (!order) {
-          console.error(
-            `Razorpay webhook: payment.captured for order ${razorpayOrderId} (payment ${paymentId}) has no matching Order document yet.`,
+        if (
+          order &&
+          String(razorpayOrder.notes?.userId) === String(order.userId) &&
+          payment.currency === PAYMENT_CURRENCY &&
+          Number(payment.amount) === expectedPaise &&
+          Number(razorpayOrder.amount) === expectedPaise
+        ) {
+          await completeFailedOrderPayment(order, {
+            orderId: payment.order_id,
+            paymentId: payment.id,
+          });
+        } else {
+          // Checkout payments are completed by place-order itself. A capture
+          // with no paid order (e.g. the browser failed after paying) is only
+          // logged for manual follow-up in the Razorpay dashboard.
+          console.log(
+            `Razorpay webhook: payment ${payment.id} (order ${payment.order_id}) is not a retry for an order; nothing updated.`,
           );
         }
       }
@@ -265,61 +315,64 @@ const placeOrder = async (req, res) => {
     session = await mongoose.startSession();
 
     const userId = req.user.id;
+    // Products, prices and totals come from the user's cart and the database;
+    // any products/prices/totals in the request body are ignored.
     const {
-      products,
       shippingAddress,
       paymentMethod,
       couponCode,
-      totalAmount,
-      finalAmount,
       razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
       status,
     } = req.body;
 
-    if (!products || !products.length || !shippingAddress || !paymentMethod) {
+    if (!shippingAddress || !paymentMethod) {
       return res
         .status(HTTP_STATUS.BAD_REQUEST)
         .json({ message: COMMON_MESSAGES.ALL_FIELDS_REQUIRED_WITH_PERIOD });
     }
-
-    const productValidationError = validateOrderProducts(products);
-    if (productValidationError) {
+    if (!["Cash on Delivery", "RazorpayX"].includes(paymentMethod)) {
       return res
         .status(HTTP_STATUS.BAD_REQUEST)
-        .json({ message: productValidationError });
-    }
-
-    let appliedCoupon = null;
-    let discountAmount = 0;
-
-    if (couponCode) {
-      if (typeof couponCode !== "string" || !couponCode.trim()) {
-        return res
-          .status(HTTP_STATUS.BAD_REQUEST)
-          .json({ message: COUPON_MESSAGES.INVALID_CODE });
-      }
-
-      appliedCoupon = await Coupon.findOne({
-        name: couponCode,
-        isListed: "active",
-        expireOn: { $gt: new Date() },
-      });
-
-      if (appliedCoupon) {
-        if (appliedCoupon.CouponType === "percentage") {
-          discountAmount = (totalAmount * appliedCoupon.offerPrice) / 100;
-        } else {
-          discountAmount = appliedCoupon.offerPrice;
-        }
-        discountAmount = Math.min(discountAmount, totalAmount);
-      }
+        .json({ message: ORDER_MESSAGES.INVALID_PAYMENT_METHOD });
     }
 
     const isPaymentFailedOrder = status === "Payment Failed";
+    if (isPaymentFailedOrder && paymentMethod !== "RazorpayX") {
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: ORDER_MESSAGES.INVALID_PAYMENT_METHOD });
+    }
+
+    const priced = await priceCartForCheckout({ userId, couponCode });
+    if (priced.error) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: priced.error });
+    }
+
+    if (paymentMethod === "Cash on Delivery" && !priced.codAllowed) {
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: ORDER_MESSAGES.COD_NOT_AVAILABLE });
+    }
+
+    // An online order is only marked paid after the payment is confirmed here.
+    if (paymentMethod === "RazorpayX" && !isPaymentFailedOrder) {
+      const paymentError = await confirmRazorpayPayment({
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+        expectedPaise: toPaise(priced.finalAmount),
+        userId,
+      });
+      if (paymentError) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: paymentError });
+      }
+    }
 
     await session.withTransaction(async () => {
       if (!isPaymentFailedOrder) {
-        const stockError = await reserveStockForItems(products, session);
+        const stockError = await reserveStockForItems(priced.items, session);
         if (stockError) {
           businessError = stockError;
           throw new Error(stockError);
@@ -328,27 +381,13 @@ const placeOrder = async (req, res) => {
 
       const orderData = {
         userId,
-        products: products.map((item) => ({
-          productId: item.productId,
-          variantId: item.variantId,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.variant.price,
-          variant: item.variant,
-        })),
+        products: priced.items,
         shippingAddress,
         paymentMethod,
-        totalAmount,
-        coupon: appliedCoupon
-          ? {
-              couponId: appliedCoupon._id,
-              code: appliedCoupon.name,
-              discountType: appliedCoupon.CouponType,
-              discountAmount: discountAmount,
-            }
-          : null,
-        discountAmount,
-        finalAmount: finalAmount || totalAmount - discountAmount,
+        totalAmount: priced.totalAmount,
+        coupon: priced.coupon,
+        discountAmount: priced.discountAmount,
+        finalAmount: priced.finalAmount,
         orderDate: new Date(),
         orderStatus: isPaymentFailedOrder ? "Payment Failed" : "Processing",
         paymentStatus: isPaymentFailedOrder
@@ -359,21 +398,31 @@ const placeOrder = async (req, res) => {
       };
 
       if (paymentMethod === "RazorpayX" && razorpayOrderId) {
-        orderData.razorpay = {
-          orderId: razorpayOrderId,
-        };
+        orderData.razorpay = isPaymentFailedOrder
+          ? { orderId: razorpayOrderId }
+          : {
+              orderId: razorpayOrderId,
+              paymentId: razorpayPaymentId,
+              signature: razorpaySignature,
+            };
       }
 
       newOrder = new Order(orderData);
       await newOrder.save({ session });
 
-      // Clear cart for successful orders (stock was already reserved above)
+      // Clear the cart for successful orders (stock was reserved above). Only
+      // a non-empty cart can be checked out, so a repeated or concurrent
+      // submission of the same cart cannot create a second order.
       if (!isPaymentFailedOrder) {
-        await Cart.findOneAndUpdate(
-          { userId: userId },
+        const clearedCart = await Cart.findOneAndUpdate(
+          { userId: userId, "items.0": { $exists: true } },
           { $set: { items: [] } },
           { session },
         );
+        if (!clearedCart) {
+          businessError = ORDER_MESSAGES.CART_ALREADY_CHECKED_OUT;
+          throw new Error(businessError);
+        }
       }
     });
 
@@ -410,49 +459,23 @@ const placeWalletOrder = async (req, res) => {
     session = await mongoose.startSession();
 
     const userId = req.user.id;
-    const { products, shippingAddress, couponCode, totalAmount, finalAmount } =
-      req.body;
+    // Priced from the cart on the server; body products/totals are ignored.
+    const { shippingAddress, couponCode } = req.body;
 
-    if (!products || !products.length || !shippingAddress) {
+    if (!shippingAddress) {
       return res
         .status(HTTP_STATUS.BAD_REQUEST)
         .json({ message: COMMON_MESSAGES.ALL_FIELDS_REQUIRED_WITH_PERIOD });
     }
 
-    const productValidationError = validateOrderProducts(products);
-    if (productValidationError) {
-      return res
-        .status(HTTP_STATUS.BAD_REQUEST)
-        .json({ message: productValidationError });
+    const priced = await priceCartForCheckout({ userId, couponCode });
+    if (priced.error) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: priced.error });
     }
-
-    let appliedCoupon = null;
-    let discountAmount = 0;
-
-    if (couponCode) {
-      if (typeof couponCode !== "string" || !couponCode.trim()) {
-        return res
-          .status(HTTP_STATUS.BAD_REQUEST)
-          .json({ message: COUPON_MESSAGES.INVALID_CODE });
-      }
-
-      appliedCoupon = await Coupon.findOne({
-        name: couponCode,
-        isListed: "active",
-        expireOn: { $gt: new Date() },
-      });
-
-      if (appliedCoupon) {
-        discountAmount =
-          appliedCoupon.CouponType === "percentage"
-            ? (totalAmount * appliedCoupon.offerPrice) / 100
-            : appliedCoupon.offerPrice;
-        discountAmount = Math.min(discountAmount, totalAmount);
-      }
-    }
+    const { finalAmount } = priced;
 
     await session.withTransaction(async () => {
-      const stockError = await reserveStockForItems(products, session);
+      const stockError = await reserveStockForItems(priced.items, session);
       if (stockError) {
         businessError = stockError;
         throw new Error(stockError);
@@ -483,27 +506,13 @@ const placeWalletOrder = async (req, res) => {
       // Create order
       const orderData = {
         userId,
-        products: products.map((item) => ({
-          productId: item.productId,
-          variantId: item.variantId,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.variant.price,
-          variant: item.variant,
-        })),
+        products: priced.items,
         shippingAddress,
         paymentMethod: "Wallet",
-        totalAmount,
-        coupon: appliedCoupon
-          ? {
-              couponId: appliedCoupon._id,
-              code: appliedCoupon.name,
-              discountType: appliedCoupon.CouponType,
-              discountAmount: discountAmount,
-            }
-          : null,
-        discountAmount,
-        finalAmount: finalAmount || totalAmount - discountAmount,
+        totalAmount: priced.totalAmount,
+        coupon: priced.coupon,
+        discountAmount: priced.discountAmount,
+        finalAmount,
         orderDate: new Date(),
         orderStatus: "Processing",
         paymentStatus: "Completed",
@@ -512,12 +521,16 @@ const placeWalletOrder = async (req, res) => {
       newOrder = new Order(orderData);
       await newOrder.save({ session });
 
-      // Clear cart
-      await Cart.findOneAndUpdate(
-        { userId },
+      // Clear cart; a cart that was already checked out cannot be paid twice
+      const clearedCart = await Cart.findOneAndUpdate(
+        { userId, "items.0": { $exists: true } },
         { $set: { items: [] } },
         { session },
       );
+      if (!clearedCart) {
+        businessError = ORDER_MESSAGES.CART_ALREADY_CHECKED_OUT;
+        throw new Error(businessError);
+      }
     });
 
     return res.status(HTTP_STATUS.CREATED).json({
@@ -601,6 +614,39 @@ const orderById = async (req, res) => {
   }
 };
 
+const RETURN_REASONS = [
+  "Wrong Item",
+  "Defective Product",
+  "Size/Fit Issue",
+  "Not as Described",
+  "Other",
+];
+
+// Status moves an admin may make. Cancelled and Returned are final, so the
+// stock restore and refund tied to them cannot be repeated by reopening an
+// order; a payment-failed order (no stock reserved, nothing paid) can only
+// be cancelled.
+const ADMIN_TRANSITIONS = {
+  Processing: ["Confirmed", "Shipped", "Delivered", "Cancelled"],
+  Confirmed: ["Shipped", "Delivered", "Cancelled"],
+  Shipped: ["Delivered"],
+  Delivered: ["Returned"],
+  "Payment Failed": ["Cancelled"],
+  Cancelled: [],
+  Returned: [],
+};
+
+// Orders a customer (or admin) may still cancel.
+const CANCELLABLE_STATUSES = ["Processing", "Confirmed", "Payment Failed"];
+
+const walletSummary = (wallet) =>
+  wallet
+    ? {
+        currentBalance: wallet.balance,
+        lastTransaction: wallet.transactions[wallet.transactions.length - 1],
+      }
+    : undefined;
+
 const returnOrderStatusUpdate = async (req, res) => {
   try {
     const { id } = req.params;
@@ -615,7 +661,9 @@ const returnOrderStatusUpdate = async (req, res) => {
     }
 
     // Find order and verify ownership
-    const orderDetails = await Order.findOne({ _id: id, userId });
+    const orderDetails = mongoose.Types.ObjectId.isValid(id)
+      ? await Order.findOne({ _id: id, userId })
+      : null;
     if (!orderDetails) {
       return res
         .status(HTTP_STATUS.NOT_FOUND)
@@ -635,6 +683,15 @@ const returnOrderStatusUpdate = async (req, res) => {
       });
     }
 
+    if (
+      !RETURN_REASONS.includes(returnReason) ||
+      typeof returnDescription !== "string"
+    ) {
+      return res
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ message: RETURN_MESSAGES.INVALID_REASON });
+    }
+
     // Validate order status
     if (orderDetails.orderStatus !== "Delivered") {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -642,30 +699,36 @@ const returnOrderStatusUpdate = async (req, res) => {
       });
     }
 
-    // Add return details
-    orderDetails.returnDetails = {
-      reason: returnReason,
-      description: returnDescription,
-      returnDate: new Date(),
-    };
+    // Only one request can move the order from Delivered to Returned, and the
+    // refund follows that move, so it cannot be paid twice.
+    const updatedOrder = await Order.findOneAndUpdate(
+      { _id: orderDetails._id, userId, orderStatus: "Delivered" },
+      {
+        $set: {
+          orderStatus: "Returned",
+          returnDetails: {
+            reason: returnReason,
+            description: returnDescription,
+            returnDate: new Date(),
+          },
+        },
+      },
+      { new: true, runValidators: true },
+    );
+    if (!updatedOrder) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        message: RETURN_MESSAGES.ONLY_DELIVERED_RETURNABLE,
+      });
+    }
 
     // Process refund if payment is completed
-    if (orderDetails.paymentStatus === "Completed") {
+    if (updatedOrder.paymentStatus === "Completed") {
       try {
-        const wallet = await processRefund(orderDetails);
-
-        // Update order status
-        orderDetails.orderStatus = status;
-        const updatedOrder = await orderDetails.save();
-
+        const { wallet } = await processRefund(updatedOrder);
         return res.status(HTTP_STATUS.OK).json({
           message: RETURN_MESSAGES.PROCESSED,
           order: updatedOrder,
-          wallet: {
-            currentBalance: wallet.balance,
-            lastTransaction:
-              wallet.transactions[wallet.transactions.length - 1],
-          },
+          wallet: walletSummary(wallet),
         });
       } catch (refundError) {
         console.error("Refund processing failed:", refundError);
@@ -675,10 +738,6 @@ const returnOrderStatusUpdate = async (req, res) => {
         });
       }
     }
-
-    // If no refund was needed, just update the order
-    orderDetails.orderStatus = status;
-    const updatedOrder = await orderDetails.save();
 
     return res.status(HTTP_STATUS.OK).json({
       message: RETURN_MESSAGES.PROCESSED,
@@ -704,7 +763,9 @@ const orderStatusUpdate = async (req, res) => {
         .json({ message: ORDER_MESSAGES.STATUS_REQUIRED });
     }
 
-    const orderDetails = await Order.findById(id);
+    const orderDetails = mongoose.Types.ObjectId.isValid(id)
+      ? await Order.findById(id)
+      : null;
 
     if (!orderDetails) {
       return res
@@ -717,6 +778,20 @@ const orderStatusUpdate = async (req, res) => {
       return res
         .status(HTTP_STATUS.NOT_FOUND)
         .json({ message: ORDER_MESSAGES.NOT_FOUND });
+    }
+
+    // Customers can only cancel their order, or complete a failed payment
+    // (which is verified with Razorpay). Every other transition - including
+    // marking an order delivered, returned or paid - is for admins only.
+    if (!isAdminCaller) {
+      if (status === "Processing") {
+        return retryOrderPayment(req, res, orderDetails);
+      }
+      if (status !== "Cancelled") {
+        return res
+          .status(HTTP_STATUS.FORBIDDEN)
+          .json({ message: ORDER_MESSAGES.STATUS_CHANGE_NOT_ALLOWED });
+      }
     }
 
     if (
@@ -734,135 +809,114 @@ const orderStatusUpdate = async (req, res) => {
         .json({ message: ORDER_MESSAGES.INVALID_STATUS });
     }
 
-    // Handle Cancellation
+    if (
+      isAdminCaller &&
+      !(ADMIN_TRANSITIONS[orderDetails.orderStatus] || []).includes(status)
+    ) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        message: ORDER_MESSAGES.invalidTransition(orderDetails.orderStatus, status),
+      });
+    }
+
+    // Handle Cancellation: one atomic move to Cancelled; the stock restore and
+    // refund follow that move, so concurrent or repeated requests cannot
+    // repeat them. `before` is the order as it was just before cancelling.
     if (status === "Cancelled") {
-      if (
-        orderDetails.orderStatus === "Shipped" ||
-        orderDetails.orderStatus === "Delivered" ||
-        orderDetails.orderStatus === "Cancelled"
-      ) {
+      const before = await Order.findOneAndUpdate(
+        { _id: orderDetails._id, orderStatus: { $in: CANCELLABLE_STATUSES } },
+        { $set: { orderStatus: "Cancelled" } },
+        { new: false },
+      );
+      if (!before) {
+        const current = await Order.findById(orderDetails._id);
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
-          message: ORDER_MESSAGES.cannotCancelWithStatus(
-            orderDetails.orderStatus,
-          ),
+          message: ORDER_MESSAGES.cannotCancelWithStatus(current?.orderStatus),
         });
       }
 
-      // Restore product quantities back to stock
-      const stockUpdatePromises = orderDetails.products.map((item) =>
-        Product.findOneAndUpdate(
-          {
-            _id: item.productId,
-            "variants._id": item.variantId,
-          },
-          {
-            $inc: {
-              "variants.$.availableQuantity": item.quantity, // Add back the quantity
-            },
-          },
-        ),
-      );
+      // Restore stock only if it was taken: a payment-failed order never
+      // reserved any.
+      if (before.orderStatus !== "Payment Failed") {
+        await releaseStockForItems(before.products);
+      }
 
-      // Wait for all stock updates to complete
-      await Promise.all(stockUpdatePromises);
-
-      // Process refund for completed Razorpay payments
+      // Refund anything already paid (online or wallet) to the wallet
+      let wallet = null;
       if (
-        orderDetails.paymentMethod === "RazorpayX" &&
-        orderDetails.paymentStatus === "Completed"
+        ["RazorpayX", "Wallet"].includes(before.paymentMethod) &&
+        before.paymentStatus === "Completed"
       ) {
-        await processRefund(orderDetails);
+        ({ wallet } = await processRefund(before));
       }
-      // Also handle cancellations for orders that are still in Processing/Confirmed status
-      else if (
-        orderDetails.paymentMethod === "RazorpayX" &&
-        ["Processing", "Confirmed"].includes(orderDetails.orderStatus) &&
-        orderDetails.paymentStatus === "Completed"
-      ) {
-        await processRefund(orderDetails);
-      }
+
+      return res.status(HTTP_STATUS.OK).json({
+        message: ORDER_MESSAGES.STATUS_UPDATED,
+        updateOrder: await Order.findById(orderDetails._id),
+        ...(wallet ? { wallet: walletSummary(wallet) } : {}),
+      });
     }
 
-    // Handle Returns
+    // Handle Returns (admin): one atomic move from Delivered to Returned,
+    // then restore stock and refund once. Return details are required by the
+    // order schema, so they are filled in if the customer did not give any.
     if (status === "Returned") {
-      if (orderDetails.orderStatus !== "Delivered") {
+      const before = await Order.findOneAndUpdate(
+        { _id: orderDetails._id, orderStatus: "Delivered" },
+        {
+          $set: {
+            orderStatus: "Returned",
+            returnDetails: {
+              reason: orderDetails.returnDetails?.reason || "Other",
+              description:
+                orderDetails.returnDetails?.description ||
+                "Marked as returned by admin",
+              returnDate: orderDetails.returnDetails?.returnDate || new Date(),
+            },
+          },
+        },
+        { new: false },
+      );
+      if (!before) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
           message: RETURN_MESSAGES.ONLY_DELIVERED_RETURNABLE,
         });
       }
 
-      // Restore product quantities for returned items
-      const stockUpdatePromises = orderDetails.products.map(async (item) => {
-        try {
-          console.log(
-            `Updating stock for Product ID: ${item.productId}, Variant ID: ${item.variantId}, Quantity: ${item.quantity}`,
-          );
+      await releaseStockForItems(before.products);
 
-          const product = await Product.findOne({ _id: item.productId });
-
-          if (!product) {
-            console.error(`Product not found: ${item.productId}`);
-            return;
-          }
-
-          const variantIndex = product.variants.findIndex(
-            (v) => v._id.toString() === item.variantId.toString(),
-          );
-
-          if (variantIndex === -1) {
-            console.error(
-              `Variant not found: ${item.variantId} in Product: ${item.productId}`,
-            );
-            return;
-          }
-
-          // Updating the stock
-          product.variants[variantIndex].availableQuantity += item.quantity;
-          await product.save();
-
-          console.log(
-            `Stock updated successfully for Variant ID: ${item.variantId}`,
-          );
-        } catch (error) {
-          console.error("Stock update error:", error);
-        }
-      });
-
-      await Promise.all(stockUpdatePromises);
-
-      if (orderDetails.paymentStatus === "Completed") {
-        await processRefund(orderDetails);
+      let wallet = null;
+      if (before.paymentStatus === "Completed") {
+        ({ wallet } = await processRefund(before));
       }
+
+      return res.status(HTTP_STATUS.OK).json({
+        message: ORDER_MESSAGES.STATUS_UPDATED,
+        updateOrder: await Order.findById(orderDetails._id),
+        ...(wallet ? { wallet: walletSummary(wallet) } : {}),
+      });
     }
 
-    if (status === "Processing") {
-      orderDetails.paymentStatus = "Completed";
+    // Other admin moves apply only if the order is still in the status that
+    // was checked, so concurrent updates cannot skip or repeat a step.
+    const updates = { orderStatus: status };
+    if (status === "Delivered") {
+      updates.paymentStatus = "Completed";
+    }
+    const updateOrder = await Order.findOneAndUpdate(
+      { _id: orderDetails._id, orderStatus: orderDetails.orderStatus },
+      { $set: updates },
+      { new: true },
+    );
+    if (!updateOrder) {
+      return res.status(HTTP_STATUS.CONFLICT).json({
+        message: ORDER_MESSAGES.invalidTransition(orderDetails.orderStatus, status),
+      });
     }
 
-    orderDetails.orderStatus = status;
-    if (orderDetails.orderStatus === "Delivered") {
-      orderDetails.paymentStatus = "Completed";
-    }
-
-    const updateOrder = await orderDetails.save();
-
-    const responseData = {
+    return res.status(HTTP_STATUS.OK).json({
       message: ORDER_MESSAGES.STATUS_UPDATED,
       updateOrder: updateOrder,
-    };
-
-    // Add wallet information to response if refund was processed
-    if (status === "Cancelled" || status === "Returned") {
-      const wallet = await Wallet.findOne({ userId: orderDetails.userId });
-      if (wallet) {
-        responseData.wallet = {
-          currentBalance: wallet.balance,
-          lastTransaction: wallet.transactions[wallet.transactions.length - 1],
-        };
-      }
-    }
-
-    return res.status(HTTP_STATUS.OK).json(responseData);
+    });
   } catch (error) {
     console.error("Error:", error);
     return res
@@ -871,40 +925,161 @@ const orderStatusUpdate = async (req, res) => {
   }
 };
 
-// Helper function to process refunds
+// Completes a payment-failed order whose retry payment has been confirmed.
+// Marking it paid and reserving its stock happen in one transaction that only
+// applies while the order is still unpaid, so a payment confirmed twice
+// (concurrent requests, webhook replays, webhook + retry endpoint) completes
+// it once. If the stock is gone, the order is cancelled and the payment
+// refunded to the wallet - also at most once.
+// Returns "completed", "refunded" or "already".
+const completeFailedOrderPayment = async (order, payment) => {
+  const unpaid = {
+    _id: order._id,
+    paymentStatus: "Failed",
+    orderStatus: "Payment Failed",
+  };
+  let session;
+  let stockError = null;
+  let completed = false;
+  try {
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      stockError = null;
+      completed = false;
+      const paid = await Order.findOneAndUpdate(
+        unpaid,
+        {
+          $set: {
+            paymentStatus: "Completed",
+            orderStatus: "Processing",
+            razorpay: payment,
+          },
+        },
+        { session, new: true },
+      );
+      if (!paid) return; // already completed or cancelled
+      stockError = await reserveStockForItems(paid.products, session);
+      if (stockError) throw new Error(stockError);
+      completed = true;
+    });
+  } catch (error) {
+    if (!stockError) throw error;
+  } finally {
+    if (session) await session.endSession();
+  }
+
+  if (completed) return "completed";
+  if (!stockError) return "already";
+
+  // Paid, but the items are gone: cancel and refund to the wallet, once.
+  const cancelled = await Order.findOneAndUpdate(
+    unpaid,
+    {
+      $set: {
+        paymentStatus: "Completed",
+        orderStatus: "Cancelled",
+        razorpay: payment,
+      },
+    },
+    { new: true },
+  );
+  if (!cancelled) return "already";
+  await processRefund(cancelled);
+  return "refunded";
+};
+
+// Customer completing a failed order's payment: the payment is confirmed with
+// Razorpay for this order's stored total, then the order is completed once.
+const retryOrderPayment = async (req, res, order) => {
+  if (order.orderStatus !== "Payment Failed" || order.paymentStatus !== "Failed") {
+    return res
+      .status(HTTP_STATUS.BAD_REQUEST)
+      .json({ message: ORDER_MESSAGES.RETRY_NOT_ALLOWED });
+  }
+  const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+  const paymentError = await confirmRazorpayPayment({
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature,
+    expectedPaise: toPaise(order.finalAmount),
+    userId: order.userId,
+    orderId: order._id,
+  });
+  if (paymentError) {
+    return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: paymentError });
+  }
+
+  const outcome = await completeFailedOrderPayment(order, {
+    orderId: razorpayOrderId,
+    paymentId: razorpayPaymentId,
+    signature: razorpaySignature,
+  });
+  if (outcome === "already") {
+    return res
+      .status(HTTP_STATUS.BAD_REQUEST)
+      .json({ message: ORDER_MESSAGES.RETRY_NOT_ALLOWED });
+  }
+  if (outcome === "refunded") {
+    return res
+      .status(HTTP_STATUS.CONFLICT)
+      .json({ message: PAYMENT_MESSAGES.RETRY_OUT_OF_STOCK_REFUNDED });
+  }
+
+  return res.status(HTTP_STATUS.OK).json({
+    message: ORDER_MESSAGES.STATUS_UPDATED,
+    updateOrder: await Order.findById(order._id),
+  });
+};
+
+// Makes sure the user has a wallet. A wallet created here takes the user id
+// as its _id, so concurrent first-time refunds cannot create two wallets: the
+// second insert fails on the unique _id and the existing wallet is used.
+const ensureWallet = async (userId) => {
+  try {
+    await Wallet.updateOne(
+      { userId },
+      { $setOnInsert: { _id: userId, balance: 0, transactions: [] } },
+      { upsert: true },
+    );
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+  }
+};
+
+// Credits an order's refund to the user's wallet at most once: the credit and
+// its "Refund for order <id>" record are written in one update that only
+// applies while that record does not exist yet. Returns { wallet, refunded }.
 const processRefund = async (order) => {
   const refundAmount = order.finalAmount;
-  let wallet = await Wallet.findOne({ userId: order.userId });
+  const description = `Refund for order ${order._id}`;
 
-  if (!wallet) {
-    wallet = new Wallet({
+  await ensureWallet(order.userId);
+
+  const credited = await Wallet.findOneAndUpdate(
+    {
       userId: order.userId,
-      balance: refundAmount,
-      transactions: [
-        {
+      transactions: { $not: { $elemMatch: { description } } },
+    },
+    {
+      $inc: { balance: refundAmount },
+      $push: {
+        transactions: {
           transaction_id: new mongoose.Types.ObjectId().toString(),
           type: "refund",
           amount: refundAmount,
-          description: `Refund for order ${order._id}`,
+          description,
           status: "completed",
           date: new Date(),
         },
-      ],
-    });
-  } else {
-    wallet.balance += refundAmount;
-    wallet.transactions.push({
-      transaction_id: new mongoose.Types.ObjectId().toString(),
-      type: "refund",
-      amount: refundAmount,
-      description: `Refund for order ${order._id}`,
-      status: "completed",
-      date: new Date(),
-    });
-  }
+      },
+    },
+    { new: true },
+  );
 
-  await wallet.save();
-  return wallet;
+  return {
+    wallet: credited || (await Wallet.findOne({ userId: order.userId })),
+    refunded: Boolean(credited),
+  };
 };
 
 const getallorders = async (req, res) => {
@@ -948,7 +1123,9 @@ const refundOrders = async (req, res) => {
     const { orderId } = req.params;
     const userId = req.user.id;
 
-    const order = await Order.findOne({ _id: orderId, userId });
+    const order = mongoose.Types.ObjectId.isValid(orderId)
+      ? await Order.findOne({ _id: orderId, userId })
+      : null;
     if (!order) {
       return res
         .status(HTTP_STATUS.NOT_FOUND)
@@ -972,38 +1149,12 @@ const refundOrders = async (req, res) => {
       });
     }
 
-    const refundAmount = order.finalAmount;
-
-    let wallet = await Wallet.findOne({ userId: order.userId });
-    if (!wallet) {
-      wallet = new Wallet({
-        userId: order.userId,
-      });
-    }
-
-    const alreadyRefunded = wallet.transactions.some(
-      (transaction) =>
-        transaction.type === "refund" &&
-        transaction.description === `Refund for order ${orderId}`,
-    );
-
-    if (alreadyRefunded) {
+    const { wallet, refunded } = await processRefund(order);
+    if (!refunded) {
       return res
         .status(HTTP_STATUS.BAD_REQUEST)
         .json({ message: RETURN_MESSAGES.ALREADY_REFUNDED });
     }
-
-    wallet.balance += refundAmount;
-    wallet.transactions.push({
-      transaction_id: new mongoose.Types.ObjectId().toString(),
-      type: "refund",
-      amount: refundAmount,
-      description: `Refund for order ${orderId}`,
-      status: "completed",
-      date: new Date(),
-    });
-
-    await wallet.save();
 
     return res.status(HTTP_STATUS.OK).json({
       message: RETURN_MESSAGES.REFUND_PROCESSED,

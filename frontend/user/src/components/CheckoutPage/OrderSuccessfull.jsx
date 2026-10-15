@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { formatCurrency } from '@/lib/utils'
 import { useParams, useLocation, Link, useNavigate } from 'react-router-dom'
 import { CheckCircle, Truck, ShoppingBag, ArrowRight, AlertCircle } from 'lucide-react'
 import { Button } from "@/components/ui/button"
@@ -131,8 +132,8 @@ export default function OrderSuccessful() {
               <h3 className="text-xl font-semibold mb-2">Order Details</h3>
               <p><strong>Order ID:</strong> {orderDetails._id || orderDetails.orderId}</p>
               <p><strong>Applied coupon :</strong>{orderDetails.coupon?.code || 'Nill'}</p>
-              <p><strong>Total Amount:</strong> ₹{orderDetails.totalAmount?.toFixed(2)}</p>
-              <p><strong>Paid Amount : </strong>₹{orderDetails.finalAmount?.toFixed(2)}</p>
+              <p><strong>Total Amount:</strong> {formatCurrency(orderDetails.totalAmount)}</p>
+              <p><strong>Paid Amount : </strong>{formatCurrency(orderDetails.finalAmount)}</p>
               <p><strong>Order Date:</strong> {new Date(orderDetails.createdAt || orderDetails.orderDate).toLocaleString()}</p>
             </div>
             <div className="bg-gray-700 p-4 rounded-lg">
@@ -140,7 +141,7 @@ export default function OrderSuccessful() {
               <ul className="list-disc list-inside">
                 {orderDetails.products?.map((item, index) => (
                   <li key={index} className="mb-2">
-                    {item.name} - Quantity: {item.quantity} - Price: ₹{item.price?.toFixed(2)}
+                    {item.name} - Quantity: {item.quantity} - Price: {formatCurrency(item.price)}
                     {item.variant && (
                       <div className="ml-4 text-sm text-gray-400">
                         Variant: {item.variant.name || item.variant.attributes?.map(attr => `${attr.value}`).join(', ')}

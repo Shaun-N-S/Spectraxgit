@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PlusCircle, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Button } from '@/components/ui/button'; // Assuming Shadcn Button component is available
 import axiosInstance from '@/axios/adminAxios';
+import { formatCurrency } from '@/lib/utils';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
 
@@ -121,7 +122,7 @@ const ProductList = () => {
                       <td className="px-6 py-4">
                         {categories.find((cat) => cat._id === product.categoryId)?.name || 'Unknown'}
                       </td>
-                      <td className="px-6 py-4">${product.price}</td>
+                      <td className="px-6 py-4">{formatCurrency(product.price)}</td>
                       <td className="px-6 py-4">
                         <span
                           className={`px-2 py-1 rounded-full text-xs ${

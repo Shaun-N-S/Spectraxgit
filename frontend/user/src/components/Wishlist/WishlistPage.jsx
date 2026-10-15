@@ -1,6 +1,5 @@
-'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { 
   Card, 
   CardContent, 
@@ -14,14 +13,21 @@ import { Trash2, ShoppingCart, Heart } from 'lucide-react'
 import axiosInstance from '@/axios/userAxios'
 import { useSelector } from 'react-redux'
 import { toast } from 'react-hot-toast'
+import { formatCurrency } from '@/lib/utils'
 import { useNavigate } from 'react-router-dom'
+import PaginationControls from '../Pagination/PaginationControls'
+
+const WISHLIST_PAGE_SIZE = 5
 
 export default function WishlistPage() {
   const [wishlistItems, setWishlistItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 5
+  const [pagination, setPagination] = useState(null)
+  // Bumped after a removal to reload the current page.
+  const [reloadCount, setReloadCount] = useState(0)
+  const wishlistRequestRef = useRef(0)
 
  const userDetails = useSelector((state)=>state.user)
    const getUserId = (userDetails)=>{
@@ -33,56 +39,47 @@ export default function WishlistPage() {
 
   const navigate = useNavigate()
 
+  // The backend returns one page of the wishlist, skipping inactive or
+  // deleted products, and moves a page past the end back to the last page.
   useEffect(() => {
+    if (!userId) return
+
+    const requestId = ++wishlistRequestRef.current
+    const isLatest = () => requestId === wishlistRequestRef.current
+
     const fetchWishlistData = async () => {
       try {
-        setLoading(true)
-        const response = await axiosInstance.get(`/wishlist/${userId}`)
-        const items = response.data.wishlist.product
+        const response = await axiosInstance.get(`/wishlist/${userId}`, {
+          params: { page: currentPage, limit: WISHLIST_PAGE_SIZE },
+        })
+        if (!isLatest()) return
 
-        const itemsWithDetails = await Promise.all(
-          items.map(async (item) => {
-            try {
-              const productResponse = await axiosInstance.get(`/showProductsById/${item.productId._id}`);
-              const product = productResponse.data.product;
-        
-              if (!product || product.status !== 'active') {
-                return null;
-              }
-        
-              return {
-                id: item._id,
-                productId: item.productId._id,
-                variantId: item.variantId, // Include variantId here
-                name: product.title,
-                price: product.price,
-                image: product.productImage?.[0] || "/placeholder.svg?height=100&width=100",
-                description: product.description,
-              };
-            } catch (error) {
-              console.log(`Failed to fetch product ${item.productId._id}:`, error);
-              return null;
-            }
-          })
-        );
-        
+        const items = response.data.wishlist.product.map((item) => ({
+          id: item._id,
+          productId: item.productId._id,
+          variantId: item.variantId, // Include variantId here
+          name: item.productId.title,
+          price: item.productId.price,
+          image: item.productId.productImage?.[0] || "/placeholder.svg?height=100&width=100",
+          description: item.productId.description,
+        }))
 
-        const activeItems = itemsWithDetails.filter(item => item !== null)
-        setWishlistItems(activeItems)
-        setCurrentPage(1)
-        
+        setWishlistItems(items)
+        setPagination(response.data.pagination)
+        if (response.data.pagination.currentPage !== currentPage) {
+          setCurrentPage(response.data.pagination.currentPage)
+        }
       } catch (err) {
+        if (!isLatest()) return
         console.error('Wishlist fetch error:', err)
         setError(err.message || 'Failed to fetch wishlist items')
       } finally {
-        setLoading(false)
+        if (isLatest()) setLoading(false)
       }
     }
 
-    if (userId) {
-      fetchWishlistData()
-    }
-  }, [userId])
+    fetchWishlistData()
+  }, [userId, currentPage, reloadCount])
 
   console.log(wishlistItems)
 
@@ -91,11 +88,9 @@ const removeFromWishlist = async (productId, variantId) => {
   const userId = getUserId(userDetails);
   try {
     await axiosInstance.post('/remove/wishlist', { userId, productId, variantId });
-    const remainingItems = wishlistItems.filter(item => item.productId !== productId);
-    setWishlistItems(remainingItems);
-    // Removing the last item on the final page moves back to the last remaining page.
-    const remainingPages = Math.max(1, Math.ceil(remainingItems.length / itemsPerPage));
-    setCurrentPage((page) => Math.min(page, remainingPages));
+    // Reload the page from the backend; if it is now past the end, the
+    // backend returns the last remaining page.
+    setReloadCount((count) => count + 1);
     toast.success('Item removed from wishlist');
   } catch (err) {
     console.error('Remove item error:', err);
@@ -132,11 +127,6 @@ console.log("VariantId:", variantId);
 
 
 
-  const totalPages = Math.ceil(wishlistItems.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const currentItems = wishlistItems.slice(startIndex, endIndex)
-
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -165,14 +155,14 @@ console.log("VariantId:", variantId);
               <p className="text-center text-gray-300">Your wishlist is empty.</p>
             ) : (
               <div className="space-y-6">
-                {currentItems.map((item) => (
+                {wishlistItems.map((item) => (
                   <div key={item.id} className="flex items-center space-x-4 text-white">
                     <img src={item.image} alt={item.name} className="w-24 h-24 object-cover rounded-md" />
                     <div className="flex-1">
                       <h3 className="font-semibold text-lg">{item.name}</h3>
                       <p className="text-gray-400 mt-1 line-clamp-2">{item.description}</p>
                       <p className="text-gray-400 mt-1 line-clamp-2">{item.variant}</p>
-                      <p className="text-gray-400 mt-1">₹{item.price.toFixed(2)}</p>
+                      <p className="text-gray-400 mt-1">{formatCurrency(item.price)}</p>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Button 
@@ -198,25 +188,7 @@ console.log("VariantId:", variantId);
               </div>
             )}
 
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex justify-center items-center mt-6 space-x-2">
-                {Array.from({ length: totalPages }, (_, index) => (
-                  <Button
-                    key={index + 1}
-                    variant={currentPage === index + 1 ? "default" : "outline"}
-                    onClick={() => setCurrentPage(index + 1)}
-                    className={`px-3 py-1 ${
-                      currentPage === index + 1
-                        ? "border border-transparent bg-green-500 text-black hover:bg-green-600"
-                        : "text-gray-600"
-                    }`}
-                  >
-                    {index + 1}
-                  </Button>
-                ))}
-              </div>
-            )}
+            <PaginationControls pagination={pagination} onPageChange={setCurrentPage} />
           </CardContent>
           <CardFooter className="flex flex-col space-y-4 text-white">
             <Separator className="bg-gray-800" />

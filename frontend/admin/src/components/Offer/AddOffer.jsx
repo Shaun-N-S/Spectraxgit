@@ -116,8 +116,11 @@ export default function AddOffer() {
       }
       navigate('/offers');
       form.reset();
-    } catch {
-      toast.error(isEditing ? 'Error updating the offer.' : 'Error creating the offer.');
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message ||
+          (isEditing ? 'Error updating the offer.' : 'Error creating the offer.')
+      );
     } finally {
       setIsLoading(false);
     }
@@ -302,7 +305,7 @@ export default function AddOffer() {
                 {isEditing ? 'Update Offer' : 'Create Offer'}
               </Button>
               <div>
-              <Button onClick={handleCancel}>Cancel</Button>
+              <Button type="button" onClick={handleCancel}>Cancel</Button>
               </div>
             </div>
           </form>

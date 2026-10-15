@@ -11,6 +11,7 @@ import { Package, Truck, CreditCard, Calendar, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import axiosInstance from '@/axios/userAxios';
 import { toast } from 'react-hot-toast';
+import { formatCurrency } from '@/lib/utils';
 import { ShoppingBag } from 'lucide-react';
 import { downloadInvoice } from '../CheckoutPage/InvoiceDownload';
 
@@ -121,7 +122,7 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
   
       if (response.data.wallet) {
         const refundAmount = response.data.wallet.lastTransaction.amount;
-        toast.success(`Order cancelled and ₹${refundAmount.toFixed(2)} refunded to wallet`);
+        toast.success(`Order cancelled and ${formatCurrency(refundAmount)} refunded to wallet`);
       } else {
         toast.success('Order cancelled successfully');
       }
@@ -150,7 +151,9 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
       }
   
       // Create a new Razorpay order
+      // The server takes the amount from this order
       const retryResponse = await axiosInstance.post("/create-razorpay-order", {
+        orderId: order._id,
         amount: order.finalAmount,
         currency: "INR",
       });
@@ -174,7 +177,10 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
   
             // ✅ Update order status to "Completed"
             await axiosInstance.post(`/order/status/${order._id}`, {
-              status: "Processing"
+              status: "Processing",
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
             });
   
             toast.success("Payment successful, order updated to Completed.");
@@ -222,7 +228,7 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
 
       if (response.data.wallet) {
         const refundAmount = response.data.wallet.lastTransaction.amount;
-        toast.success(`Return processed and ₹${refundAmount.toFixed(2)} refunded to wallet`);
+        toast.success(`Return processed and ${formatCurrency(refundAmount)} refunded to wallet`);
       } else {
         toast.success('Return processed successfully');
       }
@@ -309,7 +315,7 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
                       Quantity: {product.quantity || 1}
                     </p>
                     <p className="text-sm text-gray-300">
-                      Price: ₹{product.price || 0}
+                      Price: {formatCurrency(product.price)}
                     </p>
                   </div>
                 </div>
@@ -326,7 +332,7 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
               </h3>
               <div className="space-y-2">
                 <p className="text-gray-300">Coupon Code: {order.coupon.code}</p>
-                <p className="text-gray-300">Discount Amount: ₹{order.coupon.discountAmount}</p>
+                <p className="text-gray-300">Discount Amount: {formatCurrency(order.coupon.discountAmount)}</p>
               </div>
             </div>
           )}
@@ -370,19 +376,19 @@ const OrderDetailsBox = ({ order, open, onOpenChange, onStatusUpdate }) => {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-300">Subtotal</span>
-                  <span className="font-medium">₹{subtotal}</span>
+                  <span className="font-medium">{formatCurrency(subtotal)}</span>
                 </div>
                 {order.coupon && (
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300">Discount</span>
                     <span className="font-medium text-green-500">
-                      -₹{discountAmount}
+                      -{formatCurrency(discountAmount)}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between items-center pt-2 border-t border-gray-600">
                   <span className="text-gray-300">Final Amount</span>
-                  <span className="font-medium text-lg">₹{finalAmount}</span>
+                  <span className="font-medium text-lg">{formatCurrency(finalAmount)}</span>
                 </div>
               </div>
             </div>

@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import axiosInstance from '@/axios/adminAxios';
 // import { toast } from 'react-toastify';
 import {toast} from 'react-hot-toast';
-import cloudAxios from 'axios';
+import { uploadProductImage } from '@/lib/cloudinaryUpload';
 import Cropper from 'react-easy-crop';
 import { useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
+import Swal from 'sweetalert2';
 import {
   getPriceError,
   getQuantityError,
@@ -59,6 +61,9 @@ const AddProduct = () => {
   const [previewImages, setPreviewImages] = useState([]);
   const [selectedAttributes, setSelectedAttributes] = useState({});
   const [showVariantForm, setShowVariantForm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Submission error the backend (or image upload) reported that belongs to no single field
+  const [formError, setFormError] = useState('');
   const [errors, setErrors] = useState({
     title: '',
     sku: '',
@@ -324,6 +329,8 @@ const AddProduct = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setFormError('');
   
     // Validate all fields
     const specErrors = validateSpecifications(specifications);
@@ -349,22 +356,22 @@ const AddProduct = () => {
     );
     if (hasFieldErrors || hasVariantErrors(newVariantErrors)) {
       toast.error('Please fix the highlighted fields');
+      // Bring the first highlighted field into view once the errors render
+      setTimeout(() => {
+        const firstInvalid = document.querySelector('form .border-red-500');
+        firstInvalid?.scrollIntoView({ block: 'center' });
+        firstInvalid?.focus();
+      }, 0);
       return;
     }
 
+    setIsSubmitting(true);
     try {
   
-      // Upload images to Cloudinary
-      const uploadPromises = productImages.map((image) => {
-        const formData = new FormData();
-        formData.append('file', image);
-        formData.append('upload_preset', 'products');
-        formData.append('cloud_name', 'djfuu8l1u');
-        return cloudAxios.post('https://api.cloudinary.com/v1_1/djfuu8l1u/image/upload', formData);
-      });
-  
-      const imageResponses = await Promise.all(uploadPromises);
-      const imageUrls = imageResponses.map((res) => res.data.secure_url);
+      // Upload images to Cloudinary (signed by the backend)
+      const imageUrls = await Promise.all(
+        productImages.map((image) => uploadProductImage(image))
+      );
   
       const selectedBrand = brands.find(b => b.name === specifications.brand);
       
@@ -396,7 +403,50 @@ const AddProduct = () => {
     } catch (error) {
       console.error('Error adding product:', error);
       toast.error('Error adding product. Please check the console for more details.');
+      setFormError(
+        error.response?.data?.message ||
+          (String(error.config?.url).includes('cloudinary')
+            ? 'Image upload failed. Please check your connection and try again.'
+            : 'Could not add the product. Please try again.')
+      );
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  // Anything entered that leaving the page would lose
+  const hasUnsavedChanges = () =>
+    [title, sku, price, color, availableQuantity, description, categoryId, brandId].some(
+      (value) => String(value).trim() !== ''
+    ) ||
+    productImages.length > 0 ||
+    Object.values(specifications).some((value) => String(value ?? '').trim() !== '') ||
+    variants.length !== 1 ||
+    variants.some(
+      (variant) =>
+        variant.attributes.length > 0 ||
+        ['sku', 'price', 'availableQuantity'].some((field) => String(variant[field] ?? '').trim() !== '')
+    ) ||
+    variantAttributes.some((attr) => attr.attribute.trim() || attr.values.some((value) => value.trim()));
+
+  // Close / Cancel: back to the product list without submitting. Asks first
+  // only when something has been entered.
+  const handleClose = async () => {
+    if (isSubmitting) return;
+    if (hasUnsavedChanges()) {
+      const result = await Swal.fire({
+        title: 'Discard this product?',
+        text: 'The details you entered will not be saved.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Discard',
+        cancelButtonText: 'Keep editing',
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+      });
+      if (!result.isConfirmed) return;
+    }
+    navigate('/products');
   };
 
   const validateField = (name, value) => {
@@ -567,8 +617,20 @@ const AddProduct = () => {
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 bg-white shadow rounded mt-10">
-      <h2 className="text-2xl font-bold mb-4 text-center">Add New Product</h2>
-      <form onSubmit={handleSubmit} encType="multipart/form-data">
+      <div className="relative mb-4">
+        <h2 className="text-2xl font-bold text-center">Add New Product</h2>
+        <button
+          type="button"
+          onClick={handleClose}
+          aria-label="Close and return to products"
+          title="Close"
+          className="absolute right-0 top-1/2 -translate-y-1/2 rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          <X className="h-5 w-5" aria-hidden="true" />
+        </button>
+      </div>
+      {/* noValidate: the inline messages below replace the browser's one-field-at-a-time popups */}
+      <form onSubmit={handleSubmit} encType="multipart/form-data" noValidate>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="mb-6">
             <input
@@ -597,7 +659,7 @@ const AddProduct = () => {
           <div className="mb-6">
             <input
               type="number"
-              placeholder="Price"
+              placeholder="Price (₹)"
               name="price"
               value={price}
               onChange={handleInputChange}
@@ -926,6 +988,11 @@ const AddProduct = () => {
 
         <div className="my-6">
           <label className="block text-xl font-semibold mb-4">Product Variants ({variants.length})</label>
+          {variants.length === 0 && (
+            <p className="text-sm text-gray-600 mb-4">
+              No variants: the product is saved with one default variant that uses its SKU, price and available quantity.
+            </p>
+          )}
           {variants.map((variant, index) => (
             <div key={index} className="mb-8 p-4 border rounded-lg bg-gray-50">
               <div className="flex justify-between items-start mb-4">
@@ -951,7 +1018,7 @@ const AddProduct = () => {
               <div className="grid grid-cols-3 gap-4">
                 {[
                   { field: 'sku', placeholder: 'Variant SKU' },
-                  { field: 'price', placeholder: 'Variant Price' },
+                  { field: 'price', placeholder: 'Variant Price (₹)' },
                   { field: 'availableQuantity', placeholder: 'Available Quantity' },
                 ].map(({ field, placeholder }) => (
                   <div key={field}>
@@ -971,7 +1038,26 @@ const AddProduct = () => {
           ))}
         </div>
 
-        <button type="submit" className="bg-blue-600 text-white py-2 px-4 rounded-full">Add Product</button>
+        {formError && (
+          <p role="alert" className="text-red-600 text-sm mb-3">{formError}</p>
+        )}
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="bg-blue-600 text-white py-2 px-4 rounded-full disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Adding Product...' : 'Add Product'}
+          </button>
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="border border-gray-300 text-gray-700 py-2 px-4 rounded-full hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            Cancel
+          </button>
+        </div>
       </form>
 
       {showCropper && (

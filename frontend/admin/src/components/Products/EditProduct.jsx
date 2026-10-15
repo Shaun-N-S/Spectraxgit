@@ -16,7 +16,7 @@ import { toast } from "react-hot-toast";
 import { Save, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import axiosInstance from "@/axios/adminAxios";
-import cloudAxios from "axios";
+import { uploadProductImage } from "@/lib/cloudinaryUpload";
 import {
   getMissingSpecificationLabels,
   getPriceError,
@@ -125,7 +125,21 @@ const EditProduct = () => {
             EDIT_SPECIFICATION_KEYS,
           ),
         ]);
-        setVariants(response.data.product.variants || []);
+        // A product saved without variants cannot be bought; offer a default
+        // variant (product SKU and price) for the admin to give stock to.
+        const loadedVariants = loadedProduct.variants || [];
+        setVariants(
+          loadedVariants.length > 0
+            ? loadedVariants
+            : [
+                {
+                  attributes: [],
+                  sku: loadedProduct.sku,
+                  price: loadedProduct.price,
+                  availableQuantity: "",
+                },
+              ],
+        );
 
         const arrimg = response.data.product.productImage.map(
           (img) => {
@@ -257,17 +271,9 @@ const EditProduct = () => {
 
       imageUrls = [...existingUrls];
 
-      // Upload new images
+      // Upload new images (signed by the backend)
       for (const image of newImages) {
-        const formData = new FormData();
-        formData.append("file", image);
-        formData.append("upload_preset", "products");
-
-        const response = await cloudAxios.post(
-          "https://api.cloudinary.com/v1_1/djfuu8l1u/image/upload",
-          formData,
-        );
-        imageUrls.push(response.data.secure_url);
+        imageUrls.push(await uploadProductImage(image));
       }
 
       const updatedProduct = {
@@ -382,7 +388,7 @@ const EditProduct = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="price">Price</Label>
+              <Label htmlFor="price">Price (₹)</Label>
               <Input
                 id="price"
                 name="price"
@@ -633,7 +639,7 @@ const EditProduct = () => {
                       )}
                     </div>
                     <div>
-                      <Label>Price</Label>
+                      <Label>Price (₹)</Label>
                       <Input
                         type="number"
                         value={variant.price}

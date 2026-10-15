@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSelector } from "react-redux";
 import axiosInstance from "@/axios/userAxios";
 import toast from "react-hot-toast";
+import { formatCurrency } from "@/lib/utils";
 import {
   Package,
   Pencil,
@@ -23,6 +24,10 @@ import {
   ArrowDownLeft,
 } from "lucide-react";
 import OrderDetailsBox from "./OrderDetailsBox";
+import PaginationControls from "../Pagination/PaginationControls";
+
+const WALLET_PAGE_SIZE = 5;
+
 export default function AccountPage() {
   // State for user profile data
   const [profileData, setProfileData] = useState({
@@ -75,8 +80,9 @@ export default function AccountPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const ordersPerPage = 5;
 
-  const [currentTransactionPage, setCurrentTransactionPage] = useState(1);
-  const transactionsPerPage = 5;
+  // Wallet transactions are paginated by the backend.
+  const [walletPagination, setWalletPagination] = useState(null);
+  const walletRequestRef = useRef(0);
 
   const validateProfile = () => {
     const newErrors = {};
@@ -239,13 +245,16 @@ export default function AccountPage() {
         setOrderDetails(orderData.data.orderDetails);
         console.log(orderData.data.orderDetails);
 
-        const walletData = await axiosInstance.get(`/Wallet/${userId}`);
+        const walletData = await axiosInstance.get(`/Wallet/${userId}`, {
+          params: { page: 1, limit: WALLET_PAGE_SIZE },
+        });
         if (!walletData || !walletData.data.walletDetails) {
           toast.error("No wallet found. Setting up default wallet details.");
           setWalletDetails({ balance: 0, transactions: [] }); // Default wallet
         } else {
           setWalletDetails(walletData.data.walletDetails);
         }
+        setWalletPagination(walletData?.data?.pagination || null);
       } catch (error) {
         console.error("Failed to fetch user data or addresses:", error);
         toast.error(
@@ -532,17 +541,25 @@ export default function AccountPage() {
   const endIndex = startIndex + ordersPerPage;
   const currentOrders = orderDetails.slice(startIndex, endIndex);
 
-  const totalTransactionPages = Math.ceil(
-    (walletDetails?.transactions?.length || 0) / transactionsPerPage,
-  );
-  const startTransactionIndex =
-    (currentTransactionPage - 1) * transactionsPerPage;
-  const endTransactionIndex = startTransactionIndex + transactionsPerPage;
-  const currentTransactions =
-    walletDetails?.transactions?.slice(
-      startTransactionIndex,
-      endTransactionIndex,
-    ) || [];
+  // Loads one page of transactions (newest first); only the latest page
+  // request may update the list.
+  const handleTransactionPageChange = async (page) => {
+    const requestId = ++walletRequestRef.current;
+    try {
+      const walletData = await axiosInstance.get(
+        `/Wallet/${getUserId(userDetails)}`,
+        { params: { page, limit: WALLET_PAGE_SIZE } },
+      );
+      if (requestId !== walletRequestRef.current) return;
+      if (walletData.data.walletDetails) {
+        setWalletDetails(walletData.data.walletDetails);
+      }
+      setWalletPagination(walletData.data.pagination || null);
+    } catch (error) {
+      console.error("Failed to fetch wallet transactions:", error);
+      toast.error("Failed to fetch wallet transactions");
+    }
+  };
 
   if (isLoading) {
     return (
@@ -946,8 +963,8 @@ export default function AccountPage() {
                                   Quantity: {product.quantity || 1}
                                 </p>
                                 <p className="font-medium text-green-400">
-                                  Final Price: ₹
-                                  {product.price * (product.quantity || 1)}
+                                  Final Price:{" "}
+                                  {formatCurrency(product.price * (product.quantity || 1))}
                                 </p>
                               </div>
                             ))}
@@ -1028,7 +1045,7 @@ export default function AccountPage() {
                       Current Balance
                     </h3>
                     <p className="text-3xl font-bold text-green-400">
-                      ₹{walletDetails.balance.toFixed(2)}
+                      {formatCurrency(walletDetails.balance)}
                     </p>
                   </div>
                   {/* <div className="space-y-4">
@@ -1049,7 +1066,7 @@ export default function AccountPage() {
                       Recent Transactions
                     </h3>
                     <div className="space-y-2">
-                      {currentTransactions.map((transaction) => (
+                      {(walletDetails?.transactions || []).map((transaction) => (
                         <div
                           key={transaction._id}
                           className="bg-gray-700 p-3 rounded-lg flex justify-between items-center"
@@ -1072,37 +1089,16 @@ export default function AccountPage() {
                           <p
                             className={`font-bold ${transaction.type === "refund" ? "text-green-400" : "text-red-400"}`}
                           >
-                            {transaction.type === "refund" ? "+" : "-"}₹
-                            {transaction.amount.toFixed(2)}
+                            {transaction.type === "refund" ? "+" : "-"}
+                            {formatCurrency(transaction.amount)}
                           </p>
                         </div>
                       ))}
                     </div>
-                    {/* Wallet Transactions Pagination */}
-                    {walletDetails?.transactions?.length > 0 &&
-                      totalTransactionPages > 1 && (
-                        <div className="flex justify-center items-center mt-6 space-x-2">
-                          {Array.from(
-                            { length: totalTransactionPages },
-                            (_, index) => (
-                              <Button
-                                key={index + 1}
-                                variant={
-                                  currentTransactionPage === index + 1
-                                    ? "default"
-                                    : "outline"
-                                }
-                                onClick={() =>
-                                  setCurrentTransactionPage(index + 1)
-                                }
-                                className="px-3 py-1 text-gray-600"
-                              >
-                                {index + 1}
-                              </Button>
-                            ),
-                          )}
-                        </div>
-                      )}
+                    <PaginationControls
+                      pagination={walletPagination}
+                      onPageChange={handleTransactionPageChange}
+                    />
                   </div>
                 </div>
               </CardContent>

@@ -29,6 +29,7 @@ const {
   showProductsIsActive,
   filteredProduct,
   searchProducts,
+  getShopProducts,
 } = require("../controller/productController");
 
 const {
@@ -124,6 +125,8 @@ userRoutes.get(USER_ROUTES.PRODUCTS_BY_CATEGORY, productsByCategory);
 userRoutes.get(USER_ROUTES.FILTER_PRODUCTS, filteredProduct);
 
 userRoutes.get(USER_ROUTES.SEARCH_PRODUCTS, searchProducts);
+
+userRoutes.get(USER_ROUTES.SHOP_PRODUCTS, getShopProducts);
 
 // ================= Brands =================
 

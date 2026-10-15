@@ -10,6 +10,7 @@ const {
   fetchAllUsers,
 } = require("../controller/adminController");
 const { verifyAdmin } = require("../middleware/verifyAdmin");
+const { createUploadSignature } = require("../controller/uploadController");
 const { adminAuthLimiter } = require("../middleware/rateLimiter");
 const {
   addProduct,
@@ -154,5 +155,8 @@ adminRoutes.get(
   verifyAdmin,
   getSalesAnalytics,
 );
+
+// Signed Cloudinary uploads for product images
+adminRoutes.post(ADMIN_ROUTES.UPLOAD_SIGNATURE, verifyAdmin, createUploadSignature);
 
 module.exports = adminRoutes;

@@ -1,4 +1,5 @@
 import PropTypes from "prop-types"
+import { formatCurrency } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 
 const PriceDisplay = ({ originalPrice, productOffer, categoryOffer, className = "", showSavingsBadge = true }) => {
@@ -45,16 +46,16 @@ const PriceDisplay = ({ originalPrice, productOffer, categoryOffer, className = 
     <div className={`flex items-baseline gap-4 ${className}`}>
       {discount ? (
         <>
-          <span className="text-3xl font-bold text-white">₹{discount.discountedPrice.toFixed(2)}</span>
-          <span className="text-lg text-red-400 line-through">₹{discount.originalPrice.toFixed(2)}</span>
+          <span className="text-3xl font-bold text-white">{formatCurrency(discount.discountedPrice)}</span>
+          <span className="text-lg text-red-400 line-through">{formatCurrency(discount.originalPrice)}</span>
           {showSavingsBadge && (
             <Badge variant="secondary" className="ml-2 bg-green-400">
-              Save ₹{discount.savings.toFixed(2)} ({discount.discountPercent}% OFF)
+              Save {formatCurrency(discount.savings)} ({discount.discountPercent}% OFF)
             </Badge>
           )}
         </>
       ) : (
-        <span className="text-3xl font-bold text-white">₹{originalPrice.toFixed(2)}</span>
+        <span className="text-3xl font-bold text-white">{formatCurrency(originalPrice)}</span>
       )}
     </div>
   )

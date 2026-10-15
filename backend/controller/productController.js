@@ -1,12 +1,27 @@
+const mongoose = require("mongoose");
 const Product = require("../models/productSchema");
 const Order = require("../models/orderSchema");
 const { HTTP_STATUS } = require("../constants/httpStatus");
 const { COMMON_MESSAGES, PRODUCT_MESSAGES } = require("../constants/messages");
 const { getProductPayloadError } = require("../utils/productValidation");
+const { parsePagination, buildPagination } = require("../utils/pagination");
+
+const SHOP_PAGE_SIZE = 25;
+
+const withDefaultVariant = (variants, { sku, price, availableQuantity }) =>
+  Array.isArray(variants) && variants.length > 0
+    ? variants
+    : [
+        {
+          attributes: [],
+          sku,
+          price: Number(price),
+          availableQuantity: Number(availableQuantity) || 0,
+        },
+      ];
 
 // Controller to add a new product
 const addProduct = async (req, res) => {
-  console.log("shiwnooh");
   try {
     const {
       title,
@@ -50,7 +65,7 @@ const addProduct = async (req, res) => {
       status,
       categoryId,
       brandId,
-      variants,
+      variants: withDefaultVariant(variants, { sku, price, availableQuantity }),
       specifications,
     });
 
@@ -170,6 +185,20 @@ const editProduct = async (req, res) => {
       ...(updates.productImage && { productImage: updates.productImage }),
     };
 
+    if (Array.isArray(updates.variants) && updates.variants.length === 0) {
+      const existingProduct = await Product.findById(id);
+      if (!existingProduct) {
+        return res
+          .status(HTTP_STATUS.NOT_FOUND)
+          .json({ message: COMMON_MESSAGES.PRODUCT_NOT_FOUND });
+      }
+      updatedFields.variants = withDefaultVariant([], {
+        sku: updates.sku ?? existingProduct.sku,
+        price: updates.price ?? existingProduct.price,
+        availableQuantity: updates.availableQuantity,
+      });
+    }
+
     // Find the product by ID and update it with new details, returning the updated document
     const updatedProduct = await Product.findByIdAndUpdate(id, updatedFields, {
       new: true,
@@ -236,11 +265,9 @@ const toggleProductStatus = async (req, res) => {
     );
 
     if (!product) {
-      return res
-        .status(HTTP_STATUS.NOT_FOUND)
-        .json({
-          message: COMMON_MESSAGES.PRODUCT_NOT_FOUND_WITH_TRAILING_SPACE,
-        });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        message: COMMON_MESSAGES.PRODUCT_NOT_FOUND_WITH_TRAILING_SPACE,
+      });
     }
 
     return res
@@ -251,6 +278,28 @@ const toggleProductStatus = async (req, res) => {
     return res
       .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
       .json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE });
+  }
+};
+
+// Sort order shared by the product filter and the paginated shop listing.
+const buildProductSortOptions = (sortBy) => {
+  switch (sortBy) {
+    case "popularity":
+      return { popularity: -1 };
+    case "price-low-high":
+      return { price: 1 };
+    case "price-high-low":
+      return { price: -1 };
+    case "average-rating":
+      return { rating: -1 };
+    case "new-arrivals":
+      return { createdAt: -1 };
+    case "a-z":
+      return { title: 1 };
+    case "z-a":
+      return { title: -1 };
+    default:
+      return { createdAt: -1 };
   }
 };
 
@@ -294,33 +343,7 @@ const filteredProduct = async (req, res) => {
     }
 
     // Define sorting options
-    const sortOptions = {};
-    switch (sortBy) {
-      case "popularity":
-        sortOptions.popularity = -1;
-        break;
-      case "price-low-high":
-        sortOptions.price = 1;
-        break;
-      case "price-high-low":
-        sortOptions.price = -1;
-        break;
-      case "average-rating":
-        sortOptions.rating = -1;
-        break;
-      case "new-arrivals":
-        sortOptions.createdAt = -1;
-        break;
-      case "a-z":
-        sortOptions.title = 1;
-        break;
-      case "z-a":
-        sortOptions.title = -1;
-        break;
-      default:
-        sortOptions.createdAt = -1;
-        break;
-    }
+    const sortOptions = buildProductSortOptions(sortBy);
 
     // Fetch products based on filters and sort options
     console.log(sortOptions);
@@ -337,12 +360,25 @@ const filteredProduct = async (req, res) => {
   }
 };
 
+const MAX_SEARCH_LENGTH = 100;
+
 const searchProducts = async (req, res) => {
   const { query } = req.query;
 
+  // Text is matched literally (regex characters escaped) and bounded, so a
+  // query cannot be a pattern, an operator object or an expensive regex.
+  if (
+    query !== undefined &&
+    (typeof query !== "string" || query.length > MAX_SEARCH_LENGTH)
+  ) {
+    return res
+      .status(HTTP_STATUS.BAD_REQUEST)
+      .json({ message: PRODUCT_MESSAGES.INVALID_SEARCH_QUERY });
+  }
+
   try {
     const searchFilter = query
-      ? { title: { $regex: query, $options: "i" }, status: "active" }
+      ? { title: { $regex: escapeRegex(query), $options: "i" }, status: "active" }
       : { status: "active" }; // Fetch all active products if no query
 
     const searchResults = await Product.find(searchFilter);
@@ -351,6 +387,50 @@ const searchProducts = async (req, res) => {
     return res
       .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
       .json({ message: PRODUCT_MESSAGES.SEARCH_FAILED, error });
+  }
+};
+
+// Brand/category ids from the query string (one value or an array); invalid
+// ids are ignored instead of failing the whole query.
+const toObjectIdList = (value) =>
+  (Array.isArray(value) ? value : value ? [value] : []).filter((id) =>
+    mongoose.Types.ObjectId.isValid(id),
+  );
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Paginated shop listing: active products only, with search, brand/category
+// filters and sorting applied together. The count uses the same filter.
+const getShopProducts = async (req, res) => {
+  try {
+    const { search, sortBy, brands, categories } = req.query;
+    const { page, limit } = parsePagination(req.query, SHOP_PAGE_SIZE);
+
+    const filter = { status: "active" };
+    if (typeof search === "string" && search.trim()) {
+      filter.title = { $regex: escapeRegex(search.trim()), $options: "i" };
+    }
+    const brandIds = toObjectIdList(brands);
+    if (brandIds.length) filter.brandId = { $in: brandIds };
+    const categoryIds = toObjectIdList(categories);
+    if (categoryIds.length) filter.categoryId = { $in: categoryIds };
+
+    const totalItems = await Product.countDocuments(filter);
+    const pagination = buildPagination(totalItems, page, limit);
+    // _id breaks ties so every product lands on exactly one page.
+    const products = await Product.find(filter)
+      .sort({ ...buildProductSortOptions(sortBy), _id: -1 })
+      .skip((pagination.currentPage - 1) * limit)
+      .limit(limit);
+
+    return res
+      .status(HTTP_STATUS.OK)
+      .json({ message: PRODUCT_MESSAGES.LIST_RETRIEVED, products, pagination });
+  } catch (error) {
+    console.error("Error fetching shop products:", error);
+    return res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: COMMON_MESSAGES.INTERNAL_SERVER_ERROR_TITLE_CASE });
   }
 };
 
@@ -365,4 +445,5 @@ module.exports = {
   filteredProduct,
   searchProducts,
   showProductsIsActiveOffer,
+  getShopProducts,
 };

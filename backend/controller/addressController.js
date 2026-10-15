@@ -51,7 +51,7 @@ const addAddress = async (req, res) => {
 const fetchAddress = async (req, res) => {
   console.log("fetchAddress")
     try {
-        const userId = req.user.id; // Use the authenticated user, not the client-supplied param
+        const userId = req.user.id;
         console.log("suer ID........",userId)
 
         // Fetch the user by ID

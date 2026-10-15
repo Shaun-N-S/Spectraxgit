@@ -80,6 +80,7 @@ const PRODUCT_MESSAGES = Object.freeze({
   CATEGORY_ID_REQUIRED: "Category ID is required",
   NONE_IN_CATEGORY: "No products found for this category",
   SEARCH_FAILED: "Error searching products",
+  INVALID_SEARCH_QUERY: "Search text must be up to 100 characters.",
   INVALID_PRICE: "Price must be a number greater than 0",
   INVALID_QUANTITY: "Available quantity must be a whole number of 0 or more",
   INVALID_VARIANTS: "Variants must be a list",
@@ -139,11 +140,16 @@ const CART_MESSAGES = Object.freeze({
   QUANTITY_UPDATED: "Item quantity updated successfully.",
   ITEM_ID_REQUIRED: "itemId is required.",
   ITEM_REMOVED: "Item removed successfully.",
+  INVALID_IDS: "A valid productId and variantId are required.",
+  INVALID_QUANTITY: "Quantity must be a whole number of at least 1.",
+  PRODUCT_UNAVAILABLE: "This product is currently unavailable.",
 });
 
 const WISHLIST_MESSAGES = Object.freeze({
   PRODUCT_AND_VARIANT_REQUIRED:
     "Missing required fields: productId and variantId are required",
+  INVALID_IDS: "Invalid productId or variantId",
+  VARIANT_NOT_FOUND: "Variant not found in product",
   ALREADY_IN_WISHLIST: "This product variant is already in your wishlist",
   ADDED: "Product added to wishlist successfully!",
   ADD_FAILED: "Internal server error while adding product to wishlist",
@@ -222,8 +228,16 @@ const ORDER_MESSAGES = Object.freeze({
   INVALID_STATUS: "Invalid order status",
   STATUS_UPDATED: "Order status updated successfully",
   STATUS_UPDATE_FAILED: "Error updating order status",
+  CART_EMPTY: "Your cart is empty.",
+  CART_ALREADY_CHECKED_OUT: "This cart has already been checked out.",
+  INVALID_PAYMENT_METHOD: "Invalid payment method.",
+  COD_NOT_AVAILABLE: "Cash on Delivery is not available for items over ₹1,000.",
+  STATUS_CHANGE_NOT_ALLOWED: "You can only cancel this order.",
+  RETRY_NOT_ALLOWED: "Payment can only be retried for orders whose payment failed.",
   insufficientStockForProduct: (productName) =>
     `Insufficient stock for product ${productName}`,
+  invalidTransition: (fromStatus, toStatus) =>
+    `An order in status ${fromStatus} cannot be moved to ${toStatus}.`,
   cannotCancelWithStatus: (orderStatus) =>
     `Cannot cancel the order with current status ${orderStatus}`,
 });
@@ -239,20 +253,31 @@ const RETURN_MESSAGES = Object.freeze({
     "Order is not eligible for refund. Only completed online payments can be refunded.",
   ONLY_CANCELLED_REFUNDABLE: "Only cancelled orders can be refunded",
   ALREADY_REFUNDED: "This order has already been refunded.",
+  INVALID_REASON: "Please choose a valid return reason.",
   REFUND_PROCESSED: "Refund processed successfully!",
   REFUND_REQUEST_FAILED: "Error in processing refund, please try again later",
 });
 
 const PAYMENT_MESSAGES = Object.freeze({
   INITIALIZATION_FAILED: "Payment initialization failed",
+  INVALID_AMOUNT: "Payment amount must be a positive number of rupees",
   VERIFICATION_FAILED: "Payment verification failed",
   VERIFIED: "Payment verified successfully",
+  NOT_VERIFIED: "Payment could not be verified.",
+  AMOUNT_MISMATCH: "The payment amount does not match the order total. Please try again.",
+  ALREADY_USED: "This payment has already been used for another order.",
+  RETRY_OUT_OF_STOCK_REFUNDED: "Payment received, but an item is now out of stock. The amount was refunded to your wallet.",
 });
 
 const WALLET_MESSAGES = Object.freeze({
   FETCHED: "Wallet details fetched succesfully !",
   FETCH_FAILED: "Internal Server Error while fetching wallet details.",
   INSUFFICIENT_BALANCE: "Insufficient wallet balance.",
+});
+
+const UPLOAD_MESSAGES = Object.freeze({
+  INVALID_PARAMETERS: "Invalid upload parameters.",
+  NOT_CONFIGURED: "Image uploads are not configured on the server.",
 });
 
 const REPORT_MESSAGES = Object.freeze({
@@ -280,4 +305,5 @@ module.exports = {
   PAYMENT_MESSAGES,
   WALLET_MESSAGES,
   REPORT_MESSAGES,
+  UPLOAD_MESSAGES,
 };
