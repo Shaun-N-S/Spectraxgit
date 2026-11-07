@@ -7,8 +7,7 @@ import { Eye, EyeOff } from "lucide-react";
 import axiosInstance from "../../axios/userAxios";
 import { addUser } from "@/redux/userSlice";
 import { GoogleLogin } from "@react-oauth/google";
-import {toast} from 'react-hot-toast';
-
+import { toast } from "react-hot-toast";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -29,7 +28,7 @@ const Login = () => {
     }));
     // Clear errors when user starts typing
     if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
+      setErrors((prev) => ({ ...prev, [name]: "" }));
     }
   };
 
@@ -49,14 +48,18 @@ const Login = () => {
       setLoading(true);
       try {
         const response = await axiosInstance.post("/login", formData);
+        console.log("Path cart : ", sessionStorage.getItem("path"));
         console.log(response.data);
         dispatch(addUser(response.data.user));
-        toast.success('Login successful');
-        navigate("/home");
+        toast.success("Login successful");
+        sessionStorage.getItem("path")
+          ? navigate(sessionStorage.getItem("path"))
+          : navigate("/home");
+        // navigate("/home");
       } catch (error) {
         console.error("Login error:", error.response?.data || error.message);
         if (error.response?.data?.message) {
-          toast.error(error.response.data.message );
+          toast.error(error.response.data.message);
         }
         // setErrors({ general: "Invalid credentials. Please try again." });
       } finally {
@@ -119,7 +122,6 @@ const Login = () => {
           <Link to="/forgotpassword" className="text-[#00cc00] hover:underline">
             Forgot Password ?
           </Link>
-        
 
           <Button
             type="submit"
@@ -137,27 +139,36 @@ const Login = () => {
           </Link>
         </p>
         <br />
-          <div className="flex justify-center">
-        <GoogleLogin
-          onSuccess={async (credentialResponse) => {
-            try {
-              const { credential } = credentialResponse;
-              const response = await axiosInstance.post("/google-auth", {
-                token: credential,
-              });
-              console.log(response.data);
-              dispatch(addUser(response.data));
-              navigate("/home");
-            } catch (error) {
-              console.error("Google login error:", error.response?.data || error.message);
+        <div className="flex justify-center">
+          <GoogleLogin
+            onSuccess={async (credentialResponse) => {
+              try {
+                const { credential } = credentialResponse;
+                const response = await axiosInstance.post("/google-auth", {
+                  token: credential,
+                });
+                console.log(response.data);
+                dispatch(addUser(response.data));
+                const redirectPath = sessionStorage.getItem("redirectPath");
+
+                sessionStorage.removeItem("redirectPath");
+
+                navigate(redirectPath || "/home", { replace: true });
+              } catch (error) {
+                console.error(
+                  "Google login error:",
+                  error.response?.data || error.message,
+                );
+                setErrors({
+                  general: "Google login failed. Please try again.",
+                });
+              }
+            }}
+            onError={() => {
               setErrors({ general: "Google login failed. Please try again." });
-            }
-          }}
-          onError={() => {
-            setErrors({ general: "Google login failed. Please try again." });
-            console.log("Login Failed");
-          }}
-        />
+              console.log("Login Failed");
+            }}
+          />
         </div>
       </div>
     </div>

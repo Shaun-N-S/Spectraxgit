@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import axiosInstance from "@/axios/userAxios";
 import { useSelector } from "react-redux";
 import { toast } from "react-hot-toast";
@@ -24,6 +24,7 @@ export default function ProductDetail() {
   const [categoryOffer, setCategoryOffer] = useState(null);
   const [wishlistMap, setWishlistMap] = useState({});
   const navigate = useNavigate();
+  const location = useLocation();
 
   const userDetails = useSelector((state) => state.user);
   const getUserId = (userDetails) => {
@@ -187,8 +188,10 @@ export default function ProductDetail() {
 
   const handleCart = async (userId, productId) => {
     console.log("suer ID  ....", userId);
+
     if (!userId) {
       toast.error("Please login to add items to cart");
+      sessionStorage.setItem("redirectPath", location.pathname);
       navigate("/login");
       return;
     }
@@ -220,6 +223,7 @@ export default function ProductDetail() {
   const handleWishlist = async () => {
     if (!userId) {
       toast.error("Please login to add items to wishlist");
+      sessionStorage.setItem("redirectPath", location.pathname);
       navigate("/login");
       return;
     }
@@ -384,29 +388,29 @@ export default function ProductDetail() {
             {/* Variants (hidden for a product with one option-less variant) */}
             {(productData.variants?.length > 1 ||
               productData.variants?.[0]?.attributes?.length > 0) && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Variants</h3>
-              <div className="grid grid-cols-2 gap-4 ">
-                {productData.variants.map((variant, index) => (
-                  <Button
-                    key={index}
-                    onClick={() => handleVariantChange(variant)}
-                    variant={
-                      selectedVariant === variant ? "default" : "outline"
-                    }
-                    className="bg-blue-950 w-full justify-start transition-all duration-300 hover:scale-105"
-                  >
-                    <div className="text-left">
-                      {variant.attributes.map((attr, attrIndex) => (
-                        <div key={attrIndex}>
-                          {attr.name}: {attr.value}
-                        </div>
-                      ))}
-                    </div>
-                  </Button>
-                ))}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Variants</h3>
+                <div className="grid grid-cols-2 gap-4 ">
+                  {productData.variants.map((variant, index) => (
+                    <Button
+                      key={index}
+                      onClick={() => handleVariantChange(variant)}
+                      variant={
+                        selectedVariant === variant ? "default" : "outline"
+                      }
+                      className="bg-blue-950 w-full justify-start transition-all duration-300 hover:scale-105"
+                    >
+                      <div className="text-left">
+                        {variant.attributes.map((attr, attrIndex) => (
+                          <div key={attrIndex}>
+                            {attr.name}: {attr.value}
+                          </div>
+                        ))}
+                      </div>
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
             )}
 
             <div className="space-y-4">

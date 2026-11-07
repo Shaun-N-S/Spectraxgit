@@ -24,7 +24,7 @@ const fetchOffersForProducts = async (products) => {
     if (product.offerId) {
       try {
         const productOfferResponse = await axiosInstance.get(
-          `/Offer/fetch/${product.offerId}`
+          `/Offer/fetch/${product.offerId}`,
         );
         offers.productOffer = productOfferResponse.data.offerData;
       } catch (error) {
@@ -35,7 +35,7 @@ const fetchOffersForProducts = async (products) => {
     if (product.categoryId) {
       try {
         const categoryOfferResponse = await axiosInstance.get(
-          `/Offer/category/${product.categoryId}`
+          `/Offer/category/${product.categoryId}`,
         );
         offers.categoryOffer = categoryOfferResponse.data.offerData;
       } catch (error) {
@@ -81,7 +81,6 @@ const ProductPage = () => {
     return userDetails?.user?._id || userDetails?.user?.id;
   };
   const userId = getUserId(userDetails);
-  console.log(userId);
 
   const query = new URLSearchParams(location.search).get("search") || "";
 
@@ -107,7 +106,7 @@ const ProductPage = () => {
   const calculateBestDiscount = (
     originalPrice,
     productOffer,
-    categoryOffer
+    categoryOffer,
   ) => {
     let bestDiscountPercent = 0;
     const currentDate = new Date();
@@ -120,7 +119,7 @@ const ProductPage = () => {
     ) {
       bestDiscountPercent = Math.max(
         bestDiscountPercent,
-        productOffer.discountPercent
+        productOffer.discountPercent,
       );
     }
 
@@ -132,7 +131,7 @@ const ProductPage = () => {
     ) {
       bestDiscountPercent = Math.max(
         bestDiscountPercent,
-        categoryOffer.discountPercent
+        categoryOffer.discountPercent,
       );
     }
 
@@ -216,12 +215,10 @@ const ProductPage = () => {
   const navigate = useNavigate();
 
   const handleCart = async (userId, productId, variantId) => {
-    console.log("UserId:", userId);
-    console.log("ProductId:", productId);
-    console.log("VariantId:", variantId);
-
-    if(!userId){
-      toast.error("Please Login to add to cart.")
+    if (!userId) {
+      toast.error("Please Login to add to cart.");
+      sessionStorage.setItem("redirectPath", location.pathname);
+      navigate("/login");
       return;
     }
     if (!variantId) {
@@ -238,9 +235,9 @@ const ProductPage = () => {
           variantId,
           quantity: 1,
         },
-        { withCredentials: true }
+        { withCredentials: true },
       );
-      console.log("Response:", response.data);
+      console.log("Response:", response.message);
       console.log("Product added to cart successfully");
       toast.success("Added to cart");
       navigate("/cart");
@@ -257,6 +254,7 @@ const ProductPage = () => {
   const handleWishlist = async (userId, productId, variantId) => {
     if (!userId) {
       toast.error("Please login to add items to wishlist");
+      sessionStorage.setItem("redirectPath", location.pathname);
       navigate("/login");
       return;
     }
@@ -264,9 +262,6 @@ const ProductPage = () => {
       toast.error("This product is currently unavailable");
       return;
     }
-
-    console.log("handlewishlist ............",userId, productId, variantId);
-    
 
     try {
       const isCurrentlyInWishlist = wishlistMap[productId];
@@ -303,14 +298,12 @@ const ProductPage = () => {
         }
       }
     } catch (error) {
-      console.error("Wishlist error:", error);
       toast.error(error.response?.data?.message || "Error updating wishlist");
     }
   };
 
   const renderHeartIcon = (productId) => {
     const isInWishlist = wishlistMap[productId];
-    console.log("Product ID:", productId, "Is in wishlist:", isInWishlist);
     return (
       <Heart
         className={`w-5 h-5 transition-colors duration-300 ${
@@ -359,13 +352,12 @@ const ProductPage = () => {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          
           {products.map((product) => {
             const { discountedPrice, originalPrice, discountPercent } =
               calculateBestDiscount(
                 product.price,
                 productOffers[product._id],
-                categoryOffers[product._id]
+                categoryOffers[product._id],
               );
 
             return (
@@ -385,7 +377,7 @@ const ProductPage = () => {
                       handleWishlist(
                         userId,
                         product._id,
-                        product.variants?.[0]?._id
+                        product.variants?.[0]?._id,
                       )
                     }
                   >
@@ -422,7 +414,7 @@ const ProductPage = () => {
                         handleCart(
                           userId,
                           product._id,
-                          product.variants?.[0]?._id
+                          product.variants?.[0]?._id,
                         )
                       }
                       className="bg-green-500 hover:bg-green-600"
